@@ -44,6 +44,13 @@ def train_and_eval(
     batch_size: int = 512,
     d_model: int = 256,
     num_layers: int = 6,
+    nhead: int = 8,
+    dim_feedforward: int = 1024,
+    dropout: float = 0.1,
+    lr: float = 1e-3,
+    warmup_frac: float = 0.1,
+    val_frac: float = 0.05,
+    seed: int = 42,
 ):
     import subprocess
 
@@ -80,6 +87,13 @@ def train_and_eval(
         "--batch_size",     str(batch_size),
         "--d_model",        str(d_model),
         "--num_layers",     str(num_layers),
+        "--nhead",          str(nhead),
+        "--dim_feedforward", str(dim_feedforward),
+        "--dropout",        str(dropout),
+        "--lr",             str(lr),
+        "--warmup_frac",    str(warmup_frac),
+        "--val_frac",       str(val_frac),
+        "--seed",           str(seed),
     )
 
     run(
@@ -98,10 +112,24 @@ def main(
     batch_size: int = 512,
     d_model: int = 256,
     num_layers: int = 6,
+    nhead: int = 8,
+    dim_feedforward: int = 1024,
+    dropout: float = 0.1,
+    lr: float = 1e-3,
+    warmup_frac: float = 0.1,
+    val_frac: float = 0.05,
+    seed: int = 42,
 ):
     train_and_eval.remote(
         epochs=epochs,
         batch_size=batch_size,
         d_model=d_model,
         num_layers=num_layers,
+        nhead=nhead,
+        dim_feedforward=dim_feedforward,
+        dropout=dropout,
+        lr=lr,
+        warmup_frac=warmup_frac,
+        val_frac=val_frac,
+        seed=seed,
     )

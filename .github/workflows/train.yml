@@ -19,6 +19,34 @@ on:
         description: "Number of transformer layers"
         required: false
         default: "6"
+      nhead:
+        description: "Number of attention heads"
+        required: false
+        default: "8"
+      dim_feedforward:
+        description: "Feedforward network hidden dim"
+        required: false
+        default: "1024"
+      dropout:
+        description: "Dropout rate"
+        required: false
+        default: "0.1"
+      lr:
+        description: "Learning rate"
+        required: false
+        default: "1e-3"
+      warmup_frac:
+        description: "Fraction of steps used for LR warmup"
+        required: false
+        default: "0.1"
+      val_frac:
+        description: "Fraction of data used for validation"
+        required: false
+        default: "0.05"
+      seed:
+        description: "Random seed"
+        required: false
+        default: "42"
 
 # Runs on a standard GitHub-hosted runner.
 # Modal provisions the GPU on demand — no self-hosted runner needed.
@@ -49,10 +77,17 @@ jobs:
       - name: Train on Modal (A10G GPU)
         run: |
           uv run modal run train_modal.py \
-            --epochs     ${{ github.event.inputs.epochs }}     \
-            --batch-size ${{ github.event.inputs.batch_size }} \
-            --d-model    ${{ github.event.inputs.d_model }}    \
-            --num-layers ${{ github.event.inputs.num_layers }}
+            --epochs         ${{ github.event.inputs.epochs }}          \
+            --batch-size     ${{ github.event.inputs.batch_size }}      \
+            --d-model        ${{ github.event.inputs.d_model }}         \
+            --num-layers     ${{ github.event.inputs.num_layers }}      \
+            --nhead          ${{ github.event.inputs.nhead }}           \
+            --dim-feedforward ${{ github.event.inputs.dim_feedforward }} \
+            --dropout        ${{ github.event.inputs.dropout }}         \
+            --lr             ${{ github.event.inputs.lr }}              \
+            --warmup-frac    ${{ github.event.inputs.warmup_frac }}     \
+            --val-frac       ${{ github.event.inputs.val_frac }}        \
+            --seed           ${{ github.event.inputs.seed }}
         env:
           MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
