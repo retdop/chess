@@ -44,8 +44,8 @@ class ChessPuzzleTransformer(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
-        nn.init.trunc_normal_(self.piece_embedding.weight, std=0.02)
-        nn.init.trunc_normal_(self.pos_embedding.weight, std=0.02)
+        nn.init.trunc_normal_(self.piece_embedding.weight, std=0.1)
+        nn.init.trunc_normal_(self.pos_embedding.weight, std=0.1)
         for module in self.head.modules():
             if isinstance(module, nn.Linear):
                 nn.init.trunc_normal_(module.weight, std=0.02)
