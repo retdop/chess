@@ -4,6 +4,7 @@ Smoke tests — run entirely on CPU with synthetic data, no puzzle CSV needed.
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -71,7 +72,7 @@ def test_evaluate_loads_config(tmp_path):
 
     # Reload via the same logic used in evaluate.py
     with open(tmp_path / "config.json") as f:
-        loaded_cfg = json.load(f)
+        loaded_cfg: dict[str, Any] = json.load(f)
     restored = ChessPuzzleTransformer(**loaded_cfg)
     restored.load_state_dict(torch.load(tmp_path / "best.pt", map_location="cpu"))
     restored.eval()
