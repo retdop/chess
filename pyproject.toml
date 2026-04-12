@@ -18,6 +18,25 @@ dev = [
     "modal>=0.73",
 ]
 
+[tool.uv]
+# Ensure the lock file covers all target platforms, including Intel Mac.
+required-environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
+# PyPI has no torch wheel for macOS x86_64 (Intel); use PyTorch's CPU index instead.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'darwin' and platform_machine == 'x86_64'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
