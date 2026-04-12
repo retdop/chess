@@ -3,7 +3,8 @@ name = "chess-puzzle-rating"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "torch>=2.1.0",
+    # torch has no wheels for macOS x86_64 (Intel) on Python 3.13+; skip it there.
+    "torch>=2.1.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
     "python-chess>=1.999",
     "pandas>=2.0",
     "numpy>=1.24",
@@ -16,6 +17,13 @@ dev = [
     "ty>=0.0.1a1",
     "pytest>=8.0",
     "modal>=0.73",
+]
+
+[tool.uv]
+required-environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [tool.ruff]
