@@ -64,9 +64,9 @@ def test_model_parameter_count():
 def test_evaluate_loads_config(tmp_path):
     """evaluate.py must reconstruct the model from config.json, not hardcoded defaults."""
     # Train a small model and save its checkpoint + config
-    cfg = dict(d_model=64, nhead=2, num_layers=2, dim_feedforward=128, dropout=0.0)
-    model = ChessPuzzleTransformer(**cfg)
+    model = ChessPuzzleTransformer(d_model=64, nhead=2, num_layers=2, dim_feedforward=128, dropout=0.0)
     torch.save(model.state_dict(), tmp_path / "best.pt")
+    cfg = {"d_model": 64, "nhead": 2, "num_layers": 2, "dim_feedforward": 128, "dropout": 0.0}
     (tmp_path / "config.json").write_text(json.dumps(cfg))
     (tmp_path / "stats.json").write_text(json.dumps({"rating_mean": 1500.0, "rating_std": 300.0}))
 
@@ -87,8 +87,7 @@ def test_evaluate_loads_config(tmp_path):
 
 def test_evaluate_config_mismatch_raises(tmp_path):
     """Loading a checkpoint into a mismatched model must raise RuntimeError."""
-    small_cfg = dict(d_model=64, nhead=2, num_layers=2, dim_feedforward=128, dropout=0.0)
-    small_model = ChessPuzzleTransformer(**small_cfg)
+    small_model = ChessPuzzleTransformer(d_model=64, nhead=2, num_layers=2, dim_feedforward=128, dropout=0.0)
     torch.save(small_model.state_dict(), tmp_path / "best.pt")
 
     # Try to load into a larger model (simulates the original bug)
