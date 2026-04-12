@@ -29,13 +29,9 @@ image = (
         "numpy>=1.24",
         "matplotlib>=3.7",
     )
-)
-
-# Mount source code at runtime instead of baking it into the image.
-# This way the heavy image (torch etc.) is cached and reused even when
-# source files change, avoiding a multi-minute rebuild on every run.
-src_mount = modal.Mount.from_local_dir(
-    Path(__file__).parent / "src", remote_path="/app/src"
+    # Mount source code at runtime (copy=False) so the heavy image layer is
+    # cached and reused even when source files change.
+    .add_local_dir(Path(__file__).parent / "src", remote_path="/app/src")
 )
 
 
@@ -44,7 +40,6 @@ src_mount = modal.Mount.from_local_dir(
     timeout=14400,  # 4 hours
     image=image,
     volumes={"/data": data_vol, "/checkpoints": ckpt_vol},
-    mounts=[src_mount],
 )
 def train_and_eval(
     epochs: int = 20,
