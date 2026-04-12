@@ -7,6 +7,7 @@ Usage:
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -51,7 +52,12 @@ def main():
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, num_workers=4)
 
-    model = ChessPuzzleTransformer().to(device)
+    config_path = ckpt_dir / "config.json"
+    model_kwargs: dict[str, Any] = {}
+    if config_path.exists():
+        with open(config_path) as f:
+            model_kwargs = json.load(f)
+    model = ChessPuzzleTransformer(**model_kwargs).to(device)
     model.load_state_dict(torch.load(ckpt_dir / "best.pt", map_location=device))
     model.eval()
 

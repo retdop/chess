@@ -47,6 +47,14 @@ def main():
     ckpt_dir.mkdir(exist_ok=True)
     with open(ckpt_dir / "stats.json", "w") as f:
         json.dump({"rating_mean": rating_mean, "rating_std": rating_std}, f)
+    with open(ckpt_dir / "config.json", "w") as f:
+        json.dump({
+            "d_model": args.d_model,
+            "nhead": args.nhead,
+            "num_layers": args.num_layers,
+            "dim_feedforward": args.dim_feedforward,
+            "dropout": args.dropout,
+        }, f)
 
     dataset = PuzzleDataset(df, rating_mean, rating_std)
     n_val   = int(len(dataset) * args.val_frac)
