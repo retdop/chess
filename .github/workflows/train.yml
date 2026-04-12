@@ -1,0 +1,73 @@
+name: Train
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: "Number of training epochs"
+        required: false
+        default: "20"
+      batch_size:
+        description: "Batch size"
+        required: false
+        default: "512"
+      d_model:
+        description: "Transformer hidden dim"
+        required: false
+        default: "256"
+      num_layers:
+        description: "Number of transformer layers"
+        required: false
+        default: "6"
+
+# Runs on a standard GitHub-hosted runner.
+# Modal provisions the GPU on demand — no self-hosted runner needed.
+# Required secrets: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Train on Modal (A10G GPU)
+        run: |
+          uv run modal run train_modal.py \
+            --epochs     ${{ github.event.inputs.epochs }}     \
+            --batch-size ${{ github.event.inputs.batch_size }} \
+            --d-model    ${{ github.event.inputs.d_model }}    \
+            --num-layers ${{ github.event.inputs.num_layers }}
+        env:
+          MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+      - name: Download checkpoints from Modal volume
+        run: |
+          mkdir -p checkpoints
+          uv run modal volume get chess-checkpoints /best.pt     checkpoints/best.pt
+          uv run modal volume get chess-checkpoints /stats.json  checkpoints/stats.json
+          uv run modal volume get chess-checkpoints /scatter.png checkpoints/scatter.png
+        env:
+          MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+      - name: Upload checkpoints as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoints-${{ github.run_id }}
+          path: checkpoints/
+          retention-days: 30
