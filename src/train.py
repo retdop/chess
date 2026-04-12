@@ -102,6 +102,7 @@ def main():
 
     # ── Training loop ─────────────────────────────────────────────────────────
     best_val_rmse = float("inf")
+    history: dict[str, list[dict]] = {"steps": [], "epochs": []}
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -118,8 +119,14 @@ def main():
             running_loss.append(loss.item())
 
             if (step + 1) % 200 == 0:
+                avg_loss = float(np.mean(running_loss[-200:]))
                 print(f"  epoch {epoch}  step {step+1}/{len(train_loader)}"
-                      f"  loss={np.mean(running_loss[-200:]):.4f}")
+                      f"  loss={avg_loss:.4f}")
+                history["steps"].append({
+                    "epoch": epoch,
+                    "step": step + 1,
+                    "train_loss": round(avg_loss, 6),
+                })
 
         # Validation
         model.eval()
@@ -134,11 +141,21 @@ def main():
         lr_now = scheduler.get_last_lr()[0]
         print(f"Epoch {epoch}/{args.epochs} | val RMSE={val_rmse_elo:.1f} Elo | lr={lr_now:.2e}")
 
+        history["epochs"].append({
+            "epoch": epoch,
+            "train_loss": round(float(np.mean(running_loss)), 6),
+            "val_rmse_elo": round(val_rmse_elo, 1),
+            "lr": lr_now,
+        })
+
         if val_rmse_elo < best_val_rmse:
             best_val_rmse = val_rmse_elo
             torch.save(model.state_dict(), ckpt_dir / "best.pt")
             print(f"  -> saved best (RMSE={best_val_rmse:.1f})")
 
+    with open(ckpt_dir / "history.json", "w") as f:
+        json.dump(history, f, indent=2)
+    print(f"Training history saved to {ckpt_dir / 'history.json'}")
     print(f"\nDone. Best val RMSE: {best_val_rmse:.1f} Elo")
 
 

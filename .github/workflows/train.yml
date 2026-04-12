@@ -85,9 +85,10 @@ jobs:
       - name: Download results from Modal volume
         run: |
           dir="experiments/${{ inputs.experiment }}"
-          uv run modal volume get chess-checkpoints /results.json "$dir/results.json"
-          uv run modal volume get chess-checkpoints /scatter.png  "$dir/scatter.png"
-          uv run modal volume get chess-checkpoints /stats.json   "$dir/stats.json"
+          uv run modal volume get chess-checkpoints /results.json    "$dir/results.json"
+          uv run modal volume get chess-checkpoints /stats.json      "$dir/stats.json"
+          uv run modal volume get chess-checkpoints /history.json    "$dir/history.json"
+          uv run modal volume get chess-checkpoints /predictions.csv "$dir/predictions.csv"
         env:
           MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -99,7 +100,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           rm -f "$dir/PENDING"
-          git add "$dir/results.json" "$dir/scatter.png" "$dir/stats.json" "$dir/PENDING"
+          git add \
+            "$dir/results.json" \
+            "$dir/stats.json" \
+            "$dir/history.json" \
+            "$dir/predictions.csv" \
+            "$dir/PENDING"
           git commit -m "results(${{ inputs.experiment }}): add training results"
 
           # Retry push with rebase in case of concurrent experiment commits
