@@ -60,6 +60,7 @@ def main():
     with open(ckpt_dir / "stats.json", "w") as f:
         json.dump({"rating_mean": rating_mean, "rating_std": rating_std}, f)
     pool = cfg.get("pool", "cls")
+    pos_enc = cfg.get("pos_enc", "flat")
     with open(ckpt_dir / "config.json", "w") as f:
         json.dump({
             "d_model": cfg["d_model"],
@@ -68,6 +69,7 @@ def main():
             "dim_feedforward": cfg["dim_feedforward"],
             "dropout": cfg["dropout"],
             "pool": pool,
+            "pos_enc": pos_enc,
         }, f)
 
     dataset = PuzzleDataset(df, rating_mean, rating_std)
@@ -96,6 +98,7 @@ def main():
         dim_feedforward=cfg["dim_feedforward"],
         dropout=cfg["dropout"],
         pool=pool,
+        pos_enc=pos_enc,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())

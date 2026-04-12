@@ -164,6 +164,7 @@ After training completes, GitHub Actions commits results back to the branch and 
 | `seed` | 42 | Random seed for reproducibility |
 | `max_samples` | null | Limit dataset size (null = use all data, set to small number for overfit tests) |
 | `pool` | `"cls"` | Pooling strategy: `"cls"` (learnable CLS token) or `"mean"` (average all 64 squares) |
+| `pos_enc` | `"flat"` | Positional encoding: `"flat"` (one embedding per square) or `"2d"` (separate rank + file embeddings) |
 
 ### Diagnosing training issues
 
