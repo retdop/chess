@@ -87,6 +87,11 @@ def test_evaluate_loads_config(tmp_path):
     assert not torch.isnan(out).any()
 
 
+def test_train_modal_imports():
+    """train_modal must import without errors (catches removed Modal API attributes)."""
+    import train_modal  # noqa: F401
+
+
 def test_evaluate_config_mismatch_raises(tmp_path):
     """Loading a checkpoint into a mismatched model must raise RuntimeError."""
     small_model = ChessPuzzleTransformer(

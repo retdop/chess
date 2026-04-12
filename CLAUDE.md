@@ -21,7 +21,7 @@ src/model.py       - ChessPuzzleTransformer architecture (pre-norm transformer)
 src/dataset.py     - PuzzleDataset, FEN-to-tensor encoding
 src/train.py       - Local training loop with CLI args
 src/evaluate.py    - Evaluation metrics and scatter plots
-train_modal.py     - Modal wrapper for cloud GPU training
+src/train_modal.py - Modal wrapper for cloud GPU training
 tests/test_smoke.py - CPU-only smoke tests (no data files needed)
 setup.sh           - Downloads Lichess puzzle CSV (~800MB)
 ```
@@ -45,7 +45,7 @@ uv run pytest tests/ -v
 uv run python src/train.py
 
 # Train on Modal (GPU)
-modal run train_modal.py
+modal run src/train_modal.py
 
 # Download puzzle data (one-time setup)
 bash setup.sh

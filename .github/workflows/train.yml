@@ -76,7 +76,7 @@ jobs:
 
       - name: Train on Modal (A10G GPU)
         run: |
-          uv run modal run train_modal.py \
+          uv run modal run src/train_modal.py \
             --epochs         ${{ github.event.inputs.epochs }}          \
             --batch-size     ${{ github.event.inputs.batch_size }}      \
             --d-model        ${{ github.event.inputs.d_model }}         \
