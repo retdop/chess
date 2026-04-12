@@ -1,0 +1,5 @@
+{
+  "test_rmse_elo": 251.4,
+  "test_mae_elo": 201.9,
+  "pearson_r": 0.0509
+}
