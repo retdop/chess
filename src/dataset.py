@@ -34,7 +34,7 @@ def fen_to_tensor(fen: str) -> torch.Tensor:
     return torch.tensor(squares, dtype=torch.long)
 
 
-class PuzzleDataset(Dataset):
+class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
     def __init__(self, df: pd.DataFrame, rating_mean: float, rating_std: float):
         self.fens = df["FEN"].values
         self.ratings = ((df["Rating"].values - rating_mean) / rating_std).astype(np.float32)
@@ -42,7 +42,7 @@ class PuzzleDataset(Dataset):
     def __len__(self) -> int:
         return len(self.fens)
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:  # ty: ignore[invalid-method-override]
         board = fen_to_tensor(self.fens[idx])
         rating = torch.tensor(self.ratings[idx], dtype=torch.float32)
         return board, rating

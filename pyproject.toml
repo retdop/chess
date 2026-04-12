@@ -1,7 +1,7 @@
 [project]
 name = "chess-puzzle-rating"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "torch>=2.1.0",
     "python-chess>=1.999",
