@@ -27,7 +27,9 @@ jobs:
   train:
     runs-on: ubuntu-latest
     timeout-minutes: 480
-
+    environment:
+      name: Modal
+      deployment: false
     steps:
       - uses: actions/checkout@v4
 
