@@ -33,10 +33,10 @@ setup.sh           - Downloads Lichess puzzle CSV (~800MB)
 uv sync --extra dev
 
 # Run linter
-uv run ruff check src tests
+uv run ruff check src tests train_modal.py
 
 # Run type checker
-uv run ty check src tests
+uv run ty check src tests train_modal.py
 
 # Run tests
 uv run pytest tests/ -v
@@ -54,8 +54,8 @@ bash setup.sh
 ## CI
 
 GitHub Actions runs on PRs to `main` (`.github/workflows/ci.yml`):
-1. `ruff check src tests` — lint
-2. `ty check src tests` — type check
+1. `ruff check src tests train_modal.py` — lint
+2. `ty check src tests train_modal.py` — type check
 3. `pytest tests/ -v` — smoke tests
 
 All three must pass before merge.
