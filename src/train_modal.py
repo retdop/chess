@@ -2,11 +2,11 @@
 Run training on a Modal GPU.
 
 Local usage:
-    modal run train_modal.py
-    modal run train_modal.py --epochs 10 --d-model 128
+    modal run src/train_modal.py
+    modal run src/train_modal.py --epochs 10 --d-model 128
 
 From CI (MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set as secrets):
-    modal run train_modal.py --epochs 20
+    modal run src/train_modal.py --epochs 20
 """
 import sys
 from pathlib import Path
@@ -31,7 +31,7 @@ image = (
     )
     # Mount source code at runtime (copy=False) so the heavy image layer is
     # cached and reused even when source files change.
-    .add_local_dir(Path(__file__).parent / "src", remote_path="/app/src")
+    .add_local_dir(Path(__file__).parent, remote_path="/app/src")
 )
 
 

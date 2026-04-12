@@ -33,7 +33,7 @@ jobs:
 
       - name: Train on Modal (small params — learning sanity check)
         run: |
-          uv run modal run train_modal.py \
+          uv run modal run src/train_modal.py \
             --epochs          3   \
             --batch-size      256 \
             --d-model         64  \

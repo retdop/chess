@@ -25,10 +25,10 @@ jobs:
         run: uv sync --extra dev
 
       - name: Lint (ruff)
-        run: uv run ruff check src tests train_modal.py
+        run: uv run ruff check src tests
 
       - name: Type check (ty)
-        run: uv run ty check src tests train_modal.py
+        run: uv run ty check src tests
 
       - name: Smoke tests
         run: uv run pytest tests/ -v

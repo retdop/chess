@@ -1,7 +1,6 @@
 """
 Smoke tests — run entirely on CPU with synthetic data, no puzzle CSV needed.
 """
-import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -89,12 +88,8 @@ def test_evaluate_loads_config(tmp_path):
 
 
 def test_train_modal_imports():
-    """train_modal.py must import without errors (catches removed Modal API attributes)."""
-    repo_root = Path(__file__).parent.parent
-    spec = importlib.util.spec_from_file_location("train_modal", repo_root / "train_modal.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    """train_modal must import without errors (catches removed Modal API attributes)."""
+    import train_modal  # noqa: F401
 
 
 def test_evaluate_config_mismatch_raises(tmp_path):

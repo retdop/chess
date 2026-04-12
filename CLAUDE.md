@@ -21,7 +21,7 @@ src/model.py       - ChessPuzzleTransformer architecture (pre-norm transformer)
 src/dataset.py     - PuzzleDataset, FEN-to-tensor encoding
 src/train.py       - Local training loop with CLI args
 src/evaluate.py    - Evaluation metrics and scatter plots
-train_modal.py     - Modal wrapper for cloud GPU training
+src/train_modal.py - Modal wrapper for cloud GPU training
 tests/test_smoke.py - CPU-only smoke tests (no data files needed)
 setup.sh           - Downloads Lichess puzzle CSV (~800MB)
 ```
@@ -33,10 +33,10 @@ setup.sh           - Downloads Lichess puzzle CSV (~800MB)
 uv sync --extra dev
 
 # Run linter
-uv run ruff check src tests train_modal.py
+uv run ruff check src tests
 
 # Run type checker
-uv run ty check src tests train_modal.py
+uv run ty check src tests
 
 # Run tests
 uv run pytest tests/ -v
@@ -45,7 +45,7 @@ uv run pytest tests/ -v
 uv run python src/train.py
 
 # Train on Modal (GPU)
-modal run train_modal.py
+modal run src/train_modal.py
 
 # Download puzzle data (one-time setup)
 bash setup.sh
@@ -54,8 +54,8 @@ bash setup.sh
 ## CI
 
 GitHub Actions runs on PRs to `main` (`.github/workflows/ci.yml`):
-1. `ruff check src tests train_modal.py` — lint
-2. `ty check src tests train_modal.py` — type check
+1. `ruff check src tests` — lint
+2. `ty check src tests` — type check
 3. `pytest tests/ -v` — smoke tests
 
 All three must pass before merge.
