@@ -78,6 +78,15 @@ def main():
     print(f"Test MAE  : {mae:.1f} Elo")
     print(f"Pearson r : {corr:.4f}")
 
+    results = {
+        "test_rmse_elo": round(rmse, 1),
+        "test_mae_elo": round(mae, 1),
+        "pearson_r": round(corr, 4),
+    }
+    with open(ckpt_dir / "results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"Results saved to {ckpt_dir / 'results.json'}")
+
     # Scatter plot
     fig, ax = plt.subplots(figsize=(7, 7))
     ax.scatter(targets, preds, alpha=0.05, s=1, color="steelblue")
