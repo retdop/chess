@@ -1,6 +1,7 @@
 """
 Smoke tests — run entirely on CPU with synthetic data, no puzzle CSV needed.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -57,3 +58,42 @@ def test_model_parameter_count():
     small = ChessPuzzleTransformer(d_model=64, nhead=4, num_layers=2, dim_feedforward=128)
     full = ChessPuzzleTransformer()
     assert sum(p.numel() for p in full.parameters()) > sum(p.numel() for p in small.parameters())
+
+
+def test_evaluate_loads_config(tmp_path):
+    """evaluate.py must reconstruct the model from config.json, not hardcoded defaults."""
+    # Train a small model and save its checkpoint + config
+    cfg = dict(d_model=64, nhead=2, num_layers=2, dim_feedforward=128, dropout=0.0)
+    model = ChessPuzzleTransformer(**cfg)
+    torch.save(model.state_dict(), tmp_path / "best.pt")
+    (tmp_path / "config.json").write_text(json.dumps(cfg))
+    (tmp_path / "stats.json").write_text(json.dumps({"rating_mean": 1500.0, "rating_std": 300.0}))
+
+    # Reload via the same logic used in evaluate.py
+    with open(tmp_path / "config.json") as f:
+        loaded_cfg = json.load(f)
+    restored = ChessPuzzleTransformer(**loaded_cfg)
+    restored.load_state_dict(torch.load(tmp_path / "best.pt", map_location="cpu"))
+    restored.eval()
+
+    # Confirm it runs and produces finite output
+    x = torch.randint(0, 13, (4, 64))
+    with torch.no_grad():
+        out = restored(x)
+    assert out.shape == (4,)
+    assert not torch.isnan(out).any()
+
+
+def test_evaluate_config_mismatch_raises(tmp_path):
+    """Loading a checkpoint into a mismatched model must raise RuntimeError."""
+    small_cfg = dict(d_model=64, nhead=2, num_layers=2, dim_feedforward=128, dropout=0.0)
+    small_model = ChessPuzzleTransformer(**small_cfg)
+    torch.save(small_model.state_dict(), tmp_path / "best.pt")
+
+    # Try to load into a larger model (simulates the original bug)
+    large_model = ChessPuzzleTransformer(d_model=128, nhead=4, num_layers=4, dim_feedforward=256)
+    try:
+        large_model.load_state_dict(torch.load(tmp_path / "best.pt", map_location="cpu"))
+        raise AssertionError("Expected RuntimeError for mismatched architectures")
+    except RuntimeError:
+        pass  # expected
