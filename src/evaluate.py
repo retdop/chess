@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
@@ -95,6 +96,18 @@ def main():
         for t, p in zip(targets, preds):
             writer.writerow([round(float(t), 1), round(float(p), 1)])
     print(f"Per-puzzle predictions saved to {pred_path}")
+
+    # Scatter plot
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.scatter(targets, preds, alpha=0.05, s=1, color="steelblue")
+    lo, hi = targets.min(), targets.max()
+    ax.plot([lo, hi], [lo, hi], "r--", linewidth=1)
+    ax.set_xlabel("True Rating")
+    ax.set_ylabel("Predicted Rating")
+    ax.set_title(f"Puzzle Rating Prediction\nRMSE={rmse:.0f} Elo   r={corr:.3f}")
+    out = ckpt_dir / "scatter.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"Scatter plot saved to {out}")
 
 
 if __name__ == "__main__":

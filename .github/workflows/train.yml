@@ -89,9 +89,19 @@ jobs:
           uv run modal volume get chess-checkpoints /stats.json      "$dir/stats.json"
           uv run modal volume get chess-checkpoints /history.json    "$dir/history.json"
           uv run modal volume get chess-checkpoints /predictions.csv "$dir/predictions.csv"
+
+          mkdir -p /tmp/plots
+          uv run modal volume get chess-checkpoints /scatter.png /tmp/plots/scatter.png
         env:
           MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+      - name: Upload plots as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plots-${{ inputs.experiment }}
+          path: /tmp/plots/
+          retention-days: 90
 
       - name: Commit results
         run: |
