@@ -3,50 +3,19 @@ name: Train
 on:
   workflow_dispatch:
     inputs:
-      epochs:
-        description: "Number of training epochs"
-        required: false
-        default: "20"
-      batch_size:
-        description: "Batch size"
-        required: false
-        default: "512"
-      d_model:
-        description: "Transformer hidden dim"
-        required: false
-        default: "256"
-      num_layers:
-        description: "Number of transformer layers"
-        required: false
-        default: "6"
-      nhead:
-        description: "Number of attention heads"
-        required: false
-        default: "8"
-      dim_feedforward:
-        description: "Feedforward network hidden dim"
-        required: false
-        default: "1024"
-      dropout:
-        description: "Dropout rate"
-        required: false
-        default: "0.1"
-      lr:
-        description: "Learning rate"
-        required: false
-        default: "1e-3"
-      warmup_frac:
-        description: "Fraction of steps used for LR warmup"
-        required: false
-        default: "0.1"
-      val_frac:
-        description: "Fraction of data used for validation"
-        required: false
-        default: "0.05"
-      seed:
-        description: "Random seed"
-        required: false
-        default: "42"
+      experiment:
+        description: "Experiment folder name under experiments/"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      experiment:
+        description: "Experiment folder name under experiments/"
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 # Runs on a standard GitHub-hosted runner.
 # Modal provisions the GPU on demand — no self-hosted runner needed.
@@ -61,6 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate experiment
+        run: |
+          dir="experiments/${{ inputs.experiment }}"
+          if [ ! -f "$dir/config.json" ]; then
+            echo "::error::Missing config: $dir/config.json"
+            exit 1
+          fi
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -74,37 +51,57 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Train on Modal (A10G GPU)
+      - name: Train on Modal (GPU)
         run: |
           uv run modal run src/train_modal.py \
-            --epochs         ${{ github.event.inputs.epochs }}          \
-            --batch-size     ${{ github.event.inputs.batch_size }}      \
-            --d-model        ${{ github.event.inputs.d_model }}         \
-            --num-layers     ${{ github.event.inputs.num_layers }}      \
-            --nhead          ${{ github.event.inputs.nhead }}           \
-            --dim-feedforward ${{ github.event.inputs.dim_feedforward }} \
-            --dropout        ${{ github.event.inputs.dropout }}         \
-            --lr             ${{ github.event.inputs.lr }}              \
-            --warmup-frac    ${{ github.event.inputs.warmup_frac }}     \
-            --val-frac       ${{ github.event.inputs.val_frac }}        \
-            --seed           ${{ github.event.inputs.seed }}
+            --config "experiments/${{ inputs.experiment }}/config.json"
         env:
           MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
 
-      - name: Download checkpoints from Modal volume
+      - name: Download results from Modal volume
         run: |
-          mkdir -p checkpoints
-          uv run modal volume get chess-checkpoints /best.pt     checkpoints/best.pt
-          uv run modal volume get chess-checkpoints /stats.json  checkpoints/stats.json
-          uv run modal volume get chess-checkpoints /scatter.png checkpoints/scatter.png
+          dir="experiments/${{ inputs.experiment }}"
+          uv run modal volume get chess-checkpoints /results.json    "$dir/results.json"
+          uv run modal volume get chess-checkpoints /stats.json      "$dir/stats.json"
+          uv run modal volume get chess-checkpoints /history.json    "$dir/history.json"
+          uv run modal volume get chess-checkpoints /predictions.csv "$dir/predictions.csv"
+
+          mkdir -p /tmp/plots
+          uv run modal volume get chess-checkpoints /scatter.png /tmp/plots/scatter.png
         env:
           MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
 
-      - name: Upload checkpoints as artifact
+      - name: Upload plots as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: checkpoints-${{ github.run_id }}
-          path: checkpoints/
-          retention-days: 30
+          name: plots-${{ inputs.experiment }}
+          path: /tmp/plots/
+          retention-days: 90
+
+      - name: Commit results
+        run: |
+          dir="experiments/${{ inputs.experiment }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          rm -f "$dir/PENDING"
+          git add \
+            "$dir/results.json" \
+            "$dir/stats.json" \
+            "$dir/history.json" \
+            "$dir/predictions.csv" \
+            "$dir/PENDING"
+          git commit -m "results(${{ inputs.experiment }}): add training results"
+
+          # Retry push with rebase in case of concurrent experiment commits
+          for i in 1 2 3 4; do
+            if git push; then
+              exit 0
+            fi
+            sleep $((2 ** i))
+            git pull --rebase origin "${{ github.ref_name }}"
+          done
+          echo "::error::Failed to push results after retries"
+          exit 1

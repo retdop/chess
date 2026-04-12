@@ -1,0 +1,54 @@
+name: Dispatch Experiments
+
+on:
+  push:
+    paths:
+      - "experiments/**/PENDING"
+
+permissions:
+  contents: write
+
+jobs:
+  detect:
+    # Skip pushes from the bot (results commits) to avoid a no-op re-trigger.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+      has_pending: ${{ steps.find.outputs.has_pending }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find pending experiments
+        id: find
+        run: |
+          experiments=()
+          for pending in experiments/*/PENDING; do
+            [ -f "$pending" ] || continue
+            name=$(basename "$(dirname "$pending")")
+            if [ -f "experiments/$name/config.json" ]; then
+              experiments+=("$name")
+            else
+              echo "::warning::Skipping $name: missing config.json"
+            fi
+          done
+
+          if [ ${#experiments[@]} -eq 0 ]; then
+            echo "has_pending=false" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"experiment\":[]}" >> "$GITHUB_OUTPUT"
+          else
+            json=$(printf '%s\n' "${experiments[@]}" | jq -R . | jq -sc '{experiment: .}')
+            echo "has_pending=true" >> "$GITHUB_OUTPUT"
+            echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          fi
+
+  train:
+    needs: detect
+    if: needs.detect.outputs.has_pending == 'true'
+    strategy:
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+      fail-fast: false
+    uses: ./.github/workflows/train.yml
+    with:
+      experiment: ${{ matrix.experiment }}
+    secrets: inherit

@@ -5,6 +5,7 @@ Usage:
     python src/evaluate.py --data_path data/lichess_puzzles.csv
 """
 import argparse
+import csv
 import json
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,24 @@ def main():
     print(f"Test RMSE : {rmse:.1f} Elo")
     print(f"Test MAE  : {mae:.1f} Elo")
     print(f"Pearson r : {corr:.4f}")
+
+    results = {
+        "test_rmse_elo": round(rmse, 1),
+        "test_mae_elo": round(mae, 1),
+        "pearson_r": round(corr, 4),
+    }
+    with open(ckpt_dir / "results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"Results saved to {ckpt_dir / 'results.json'}")
+
+    # Per-puzzle predictions (allows recreating plots offline)
+    pred_path = ckpt_dir / "predictions.csv"
+    with open(pred_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["true_rating", "predicted_rating"])
+        for t, p in zip(targets, preds):
+            writer.writerow([round(float(t), 1), round(float(p), 1)])
+    print(f"Per-puzzle predictions saved to {pred_path}")
 
     # Scatter plot
     fig, ax = plt.subplots(figsize=(7, 7))
