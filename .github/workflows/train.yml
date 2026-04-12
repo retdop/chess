@@ -53,31 +53,8 @@ jobs:
 
       - name: Train on Modal (GPU)
         run: |
-          cfg="experiments/${{ inputs.experiment }}/config.json"
-          epochs=$(jq -r '.epochs // 20' "$cfg")
-          batch_size=$(jq -r '.batch_size // 512' "$cfg")
-          d_model=$(jq -r '.d_model // 256' "$cfg")
-          num_layers=$(jq -r '.num_layers // 6' "$cfg")
-          nhead=$(jq -r '.nhead // 8' "$cfg")
-          dim_feedforward=$(jq -r '.dim_feedforward // 1024' "$cfg")
-          dropout=$(jq -r '.dropout // 0.1' "$cfg")
-          lr=$(jq -r '.lr // "1e-3"' "$cfg")
-          warmup_frac=$(jq -r '.warmup_frac // 0.1' "$cfg")
-          val_frac=$(jq -r '.val_frac // 0.05' "$cfg")
-          seed=$(jq -r '.seed // 42' "$cfg")
-
           uv run modal run src/train_modal.py \
-            --epochs         "$epochs"          \
-            --batch-size     "$batch_size"      \
-            --d-model        "$d_model"         \
-            --num-layers     "$num_layers"      \
-            --nhead          "$nhead"            \
-            --dim-feedforward "$dim_feedforward" \
-            --dropout        "$dropout"         \
-            --lr             "$lr"              \
-            --warmup-frac    "$warmup_frac"     \
-            --val-frac       "$val_frac"        \
-            --seed           "$seed"
+            --config "experiments/${{ inputs.experiment }}/config.json"
         env:
           MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

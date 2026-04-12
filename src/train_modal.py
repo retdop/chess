@@ -2,12 +2,12 @@
 Run training on a Modal GPU.
 
 Local usage:
-    modal run src/train_modal.py
-    modal run src/train_modal.py --epochs 10 --d-model 128
+    modal run src/train_modal.py --config experiments/baseline/config.json
 
 From CI (MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set as secrets):
-    modal run src/train_modal.py --epochs 20
+    modal run src/train_modal.py --config experiments/baseline/config.json
 """
+import json
 import sys
 from pathlib import Path
 
@@ -17,7 +17,7 @@ app = modal.App("chess-puzzle-rating")
 
 # Persistent volumes — data survives between runs so the puzzle CSV is only downloaded once.
 data_vol = modal.Volume.from_name("chess-data", create_if_missing=True)
-ckpt_vol  = modal.Volume.from_name("chess-checkpoints", create_if_missing=True)
+ckpt_vol = modal.Volume.from_name("chess-checkpoints", create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
@@ -41,19 +41,7 @@ image = (
     image=image,
     volumes={"/data": data_vol, "/checkpoints": ckpt_vol},
 )
-def train_and_eval(
-    epochs: int = 20,
-    batch_size: int = 512,
-    d_model: int = 256,
-    num_layers: int = 6,
-    nhead: int = 8,
-    dim_feedforward: int = 1024,
-    dropout: float = 0.1,
-    lr: float = 1e-3,
-    warmup_frac: float = 0.1,
-    val_frac: float = 0.05,
-    seed: int = 42,
-):
+def train_and_eval(config: dict):
     import subprocess
 
     data_path = "/data/lichess_puzzles.csv"
@@ -74,6 +62,11 @@ def train_and_eval(
         data_vol.commit()
         print("Data ready.")
 
+    # Write config to a temp file for train.py to read
+    config_path = "/tmp/config.json"
+    with open(config_path, "w") as f:
+        json.dump(config, f)
+
     def run(script: str, *extra_args: str):
         subprocess.run(
             [sys.executable, script, *extra_args],
@@ -83,25 +76,17 @@ def train_and_eval(
 
     run(
         "train.py",
+        "--config",         config_path,
         "--data_path",      data_path,
         "--checkpoint_dir", "/checkpoints",
-        "--epochs",         str(epochs),
-        "--batch_size",     str(batch_size),
-        "--d_model",        str(d_model),
-        "--num_layers",     str(num_layers),
-        "--nhead",          str(nhead),
-        "--dim_feedforward", str(dim_feedforward),
-        "--dropout",        str(dropout),
-        "--lr",             str(lr),
-        "--warmup_frac",    str(warmup_frac),
-        "--val_frac",       str(val_frac),
-        "--seed",           str(seed),
     )
 
     run(
         "evaluate.py",
         "--data_path",      data_path,
         "--checkpoint_dir", "/checkpoints",
+        "--val_frac",       str(config.get("val_frac", 0.05)),
+        "--seed",           str(config.get("seed", 42)),
     )
 
     ckpt_vol.commit()
@@ -109,29 +94,7 @@ def train_and_eval(
 
 
 @app.local_entrypoint()
-def main(
-    epochs: int = 20,
-    batch_size: int = 512,
-    d_model: int = 256,
-    num_layers: int = 6,
-    nhead: int = 8,
-    dim_feedforward: int = 1024,
-    dropout: float = 0.1,
-    lr: float = 1e-3,
-    warmup_frac: float = 0.1,
-    val_frac: float = 0.05,
-    seed: int = 42,
-):
-    train_and_eval.remote(
-        epochs=epochs,
-        batch_size=batch_size,
-        d_model=d_model,
-        num_layers=num_layers,
-        nhead=nhead,
-        dim_feedforward=dim_feedforward,
-        dropout=dropout,
-        lr=lr,
-        warmup_frac=warmup_frac,
-        val_frac=val_frac,
-        seed=seed,
-    )
+def main(config: str = "experiments/baseline/config.json"):
+    with open(config) as f:
+        cfg = json.load(f)
+    train_and_eval.remote(config=cfg)
