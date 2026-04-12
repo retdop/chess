@@ -21,9 +21,16 @@ PIECE_TO_IDX = {
 }
 
 
-def fen_to_tensor(fen: str) -> torch.Tensor:
-    """Convert FEN string to (64,) tensor of piece indices (0=empty, 1-12=pieces)."""
+def fen_to_tensor(fen: str, first_move: str | None = None) -> torch.Tensor:
+    """Convert FEN string to (64,) tensor of piece indices (0=empty, 1-12=pieces).
+
+    If *first_move* is given (UCI string), it is applied to the board first.
+    In the Lichess puzzle CSV the FEN is the position **before** the opponent's
+    setup move, so applying the first move yields the actual puzzle position.
+    """
     board = chess.Board(fen)
+    if first_move is not None:
+        board.push_uci(first_move)
     squares = []
     for sq in chess.SQUARES:  # a1..h8
         piece = board.piece_at(sq)
@@ -37,13 +44,18 @@ def fen_to_tensor(fen: str) -> torch.Tensor:
 class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
     def __init__(self, df: pd.DataFrame, rating_mean: float, rating_std: float):
         self.fens = df["FEN"].values
+        self.first_moves = (
+            df["Moves"].str.split().str[0].values
+            if "Moves" in df.columns
+            else np.array([None] * len(df))
+        )
         self.ratings = ((df["Rating"].values - rating_mean) / rating_std).astype(np.float32)
 
     def __len__(self) -> int:
         return len(self.fens)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:  # ty: ignore[invalid-method-override]
-        board = fen_to_tensor(self.fens[idx])
+        board = fen_to_tensor(self.fens[idx], self.first_moves[idx])
         rating = torch.tensor(self.ratings[idx], dtype=torch.float32)
         return board, rating
 

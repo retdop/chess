@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +23,8 @@ def parse_args():
     p.add_argument("--num_layers", type=int, default=6)
     p.add_argument("--dim_feedforward", type=int, default=1024)
     p.add_argument("--dropout", type=float, default=0.1)
-    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--warmup_frac", type=float, default=0.1)
     p.add_argument("--val_frac", type=float, default=0.05)
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
@@ -77,7 +79,17 @@ def main():
     print(f"Parameters: {n_params:,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+
+    total_steps  = len(train_loader) * args.epochs
+    warmup_steps = int(total_steps * args.warmup_frac)
+
+    def lr_lambda(step: int) -> float:
+        if step < warmup_steps:
+            return step / max(1, warmup_steps)
+        progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     criterion = nn.MSELoss()
 
     # ── Training loop ─────────────────────────────────────────────────────────
@@ -94,6 +106,7 @@ def main():
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            scheduler.step()
             running_loss.append(loss.item())
 
             if (step + 1) % 200 == 0:
@@ -112,8 +125,6 @@ def main():
         val_rmse_elo  = val_rmse_norm * rating_std
         lr_now = scheduler.get_last_lr()[0]
         print(f"Epoch {epoch}/{args.epochs} | val RMSE={val_rmse_elo:.1f} Elo | lr={lr_now:.2e}")
-
-        scheduler.step()
 
         if val_rmse_elo < best_val_rmse:
             best_val_rmse = val_rmse_elo
