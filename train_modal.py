@@ -20,7 +20,7 @@ data_vol = modal.Volume.from_name("chess-data", create_if_missing=True)
 ckpt_vol  = modal.Volume.from_name("chess-checkpoints", create_if_missing=True)
 
 image = (
-    modal.Image.debian_slim(python_version="3.11")
+    modal.Image.debian_slim(python_version="3.13")
     .apt_install("zstd", "wget")
     .pip_install(
         "torch>=2.1.0",
