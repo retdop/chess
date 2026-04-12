@@ -5,8 +5,18 @@ import torch.nn as nn
 class ChessPuzzleTransformer(nn.Module):
     """
     Treats a chess position as a sequence of 64 square tokens.
-    Each token = piece_embedding(piece_idx) + pos_embedding(square_idx).
-    A learnable [CLS] token is prepended; its final hidden state drives the rating head.
+    Each token = piece_embedding(piece_idx) + positional_embedding.
+
+    Positional encoding is configurable via *pos_enc*:
+      - ``"flat"`` (default): one learned embedding per square (64 total).
+      - ``"2d"``: separate rank (row) and file (column) embeddings (8+8=16),
+        summed to give each square a 2D-aware position signal.
+
+    Pooling strategy is configurable via *pool*:
+      - ``"cls"`` (default): a learnable [CLS] token is prepended and its
+        final hidden state drives the rating head.
+      - ``"mean"``: the 64 square outputs are averaged to form the input
+        to the rating head (no CLS token).
     """
 
     def __init__(
@@ -17,11 +27,25 @@ class ChessPuzzleTransformer(nn.Module):
         num_layers: int = 6,
         dim_feedforward: int = 1024,
         dropout: float = 0.1,
+        pool: str = "cls",
+        pos_enc: str = "flat",
     ):
         super().__init__()
+        if pool not in ("cls", "mean"):
+            raise ValueError(f"pool must be 'cls' or 'mean', got {pool!r}")
+        if pos_enc not in ("flat", "2d"):
+            raise ValueError(f"pos_enc must be 'flat' or '2d', got {pos_enc!r}")
+        self.pool = pool
+        self.pos_enc = pos_enc
+
         self.piece_embedding = nn.Embedding(num_piece_types, d_model)
-        self.pos_embedding = nn.Embedding(64, d_model)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        if pos_enc == "flat":
+            self.pos_embedding = nn.Embedding(64, d_model)
+        else:
+            self.rank_embedding = nn.Embedding(8, d_model)
+            self.file_embedding = nn.Embedding(8, d_model)
+        if pool == "cls":
+            self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -45,7 +69,11 @@ class ChessPuzzleTransformer(nn.Module):
 
     def _init_weights(self):
         nn.init.trunc_normal_(self.piece_embedding.weight, std=0.1)
-        nn.init.trunc_normal_(self.pos_embedding.weight, std=0.1)
+        if self.pos_enc == "flat":
+            nn.init.trunc_normal_(self.pos_embedding.weight, std=0.1)
+        else:
+            nn.init.trunc_normal_(self.rank_embedding.weight, std=0.1)
+            nn.init.trunc_normal_(self.file_embedding.weight, std=0.1)
         for module in self.head.modules():
             if isinstance(module, nn.Linear):
                 nn.init.trunc_normal_(module.weight, std=0.02)
@@ -54,11 +82,26 @@ class ChessPuzzleTransformer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, 64)  piece indices per square
         B = x.shape[0]
-        positions = torch.arange(64, device=x.device).unsqueeze(0).expand(B, -1)
 
-        tokens = self.piece_embedding(x) + self.pos_embedding(positions)  # (B, 64, d_model)
-        cls = self.cls_token.expand(B, -1, -1)                            # (B,  1, d_model)
-        tokens = torch.cat([cls, tokens], dim=1)                          # (B, 65, d_model)
+        if self.pos_enc == "flat":
+            positions = torch.arange(64, device=x.device).unsqueeze(0).expand(B, -1)
+            pos_emb = self.pos_embedding(positions)                   # (B, 64, d_model)
+        else:
+            # chess.SQUARES: a1=0, b1=1, ..., h1=7, a2=8, ..., h8=63
+            sq = torch.arange(64, device=x.device)
+            files = (sq % 8).unsqueeze(0).expand(B, -1)              # column 0-7
+            ranks = (sq // 8).unsqueeze(0).expand(B, -1)             # row 0-7
+            pos_emb = self.file_embedding(files) + self.rank_embedding(ranks)
 
-        out = self.transformer(tokens)   # (B, 65, d_model)
-        return self.head(out[:, 0]).squeeze(-1)  # (B,)  — CLS token output
+        tokens = self.piece_embedding(x) + pos_emb                   # (B, 64, d_model)
+
+        if self.pool == "cls":
+            cls = self.cls_token.expand(B, -1, -1)               # (B,  1, d_model)
+            tokens = torch.cat([cls, tokens], dim=1)              # (B, 65, d_model)
+            out = self.transformer(tokens)                        # (B, 65, d_model)
+            pooled = out[:, 0]                                    # CLS token
+        else:
+            out = self.transformer(tokens)                        # (B, 64, d_model)
+            pooled = out.mean(dim=1)                              # mean over squares
+
+        return self.head(pooled).squeeze(-1)  # (B,)

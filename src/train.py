@@ -23,6 +23,7 @@ DEFAULTS: dict = {
     "warmup_frac": 0.1,
     "val_frac": 0.05,
     "seed": 42,
+    "max_samples": None,
 }
 
 
@@ -46,6 +47,9 @@ def main():
 
     # ── Data ──────────────────────────────────────────────────────────────────
     df = load_puzzles(args.data_path)
+    if cfg["max_samples"] is not None:
+        df = df.head(cfg["max_samples"]).reset_index(drop=True)
+        print(f"Truncated to {len(df):,} samples (max_samples={cfg['max_samples']})")
 
     rating_mean = float(df["Rating"].mean())
     rating_std  = float(df["Rating"].std())
@@ -55,6 +59,8 @@ def main():
     ckpt_dir.mkdir(exist_ok=True)
     with open(ckpt_dir / "stats.json", "w") as f:
         json.dump({"rating_mean": rating_mean, "rating_std": rating_std}, f)
+    pool = cfg.get("pool", "cls")
+    pos_enc = cfg.get("pos_enc", "flat")
     with open(ckpt_dir / "config.json", "w") as f:
         json.dump({
             "d_model": cfg["d_model"],
@@ -62,6 +68,8 @@ def main():
             "num_layers": cfg["num_layers"],
             "dim_feedforward": cfg["dim_feedforward"],
             "dropout": cfg["dropout"],
+            "pool": pool,
+            "pos_enc": pos_enc,
         }, f)
 
     dataset = PuzzleDataset(df, rating_mean, rating_std)
@@ -89,6 +97,8 @@ def main():
         num_layers=cfg["num_layers"],
         dim_feedforward=cfg["dim_feedforward"],
         dropout=cfg["dropout"],
+        pool=pool,
+        pos_enc=pos_enc,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
