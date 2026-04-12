@@ -6,7 +6,12 @@ class ChessPuzzleTransformer(nn.Module):
     """
     Treats a chess position as a sequence of 64 square tokens.
     Each token = piece_embedding(piece_idx) + pos_embedding(square_idx).
-    A learnable [CLS] token is prepended; its final hidden state drives the rating head.
+
+    Pooling strategy is configurable via *pool*:
+      - ``"cls"`` (default): a learnable [CLS] token is prepended and its
+        final hidden state drives the rating head.
+      - ``"mean"``: the 64 square outputs are averaged to form the input
+        to the rating head (no CLS token).
     """
 
     def __init__(
@@ -17,11 +22,17 @@ class ChessPuzzleTransformer(nn.Module):
         num_layers: int = 6,
         dim_feedforward: int = 1024,
         dropout: float = 0.1,
+        pool: str = "cls",
     ):
         super().__init__()
+        if pool not in ("cls", "mean"):
+            raise ValueError(f"pool must be 'cls' or 'mean', got {pool!r}")
+        self.pool = pool
+
         self.piece_embedding = nn.Embedding(num_piece_types, d_model)
         self.pos_embedding = nn.Embedding(64, d_model)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        if pool == "cls":
+            self.cls_token = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -57,8 +68,14 @@ class ChessPuzzleTransformer(nn.Module):
         positions = torch.arange(64, device=x.device).unsqueeze(0).expand(B, -1)
 
         tokens = self.piece_embedding(x) + self.pos_embedding(positions)  # (B, 64, d_model)
-        cls = self.cls_token.expand(B, -1, -1)                            # (B,  1, d_model)
-        tokens = torch.cat([cls, tokens], dim=1)                          # (B, 65, d_model)
 
-        out = self.transformer(tokens)   # (B, 65, d_model)
-        return self.head(out[:, 0]).squeeze(-1)  # (B,)  — CLS token output
+        if self.pool == "cls":
+            cls = self.cls_token.expand(B, -1, -1)               # (B,  1, d_model)
+            tokens = torch.cat([cls, tokens], dim=1)              # (B, 65, d_model)
+            out = self.transformer(tokens)                        # (B, 65, d_model)
+            pooled = out[:, 0]                                    # CLS token
+        else:
+            out = self.transformer(tokens)                        # (B, 64, d_model)
+            pooled = out.mean(dim=1)                              # mean over squares
+
+        return self.head(pooled).squeeze(-1)  # (B,)

@@ -59,6 +59,7 @@ def main():
     ckpt_dir.mkdir(exist_ok=True)
     with open(ckpt_dir / "stats.json", "w") as f:
         json.dump({"rating_mean": rating_mean, "rating_std": rating_std}, f)
+    pool = cfg.get("pool", "cls")
     with open(ckpt_dir / "config.json", "w") as f:
         json.dump({
             "d_model": cfg["d_model"],
@@ -66,6 +67,7 @@ def main():
             "num_layers": cfg["num_layers"],
             "dim_feedforward": cfg["dim_feedforward"],
             "dropout": cfg["dropout"],
+            "pool": pool,
         }, f)
 
     dataset = PuzzleDataset(df, rating_mean, rating_std)
@@ -93,6 +95,7 @@ def main():
         num_layers=cfg["num_layers"],
         dim_feedforward=cfg["dim_feedforward"],
         dropout=cfg["dropout"],
+        pool=pool,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())

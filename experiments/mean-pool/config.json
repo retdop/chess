@@ -1,0 +1,14 @@
+{
+  "epochs": 60,
+  "batch_size": 512,
+  "d_model": 64,
+  "nhead": 4,
+  "num_layers": 2,
+  "dim_feedforward": 256,
+  "dropout": 0.05,
+  "lr": 3e-3,
+  "warmup_frac": 0.05,
+  "val_frac": 0.05,
+  "seed": 42,
+  "pool": "mean"
+}

@@ -163,6 +163,7 @@ After training completes, GitHub Actions commits results back to the branch and 
 | `val_frac` | 0.05 | Fraction of data for validation |
 | `seed` | 42 | Random seed for reproducibility |
 | `max_samples` | null | Limit dataset size (null = use all data, set to small number for overfit tests) |
+| `pool` | `"cls"` | Pooling strategy: `"cls"` (learnable CLS token) or `"mean"` (average all 64 squares) |
 
 ### Diagnosing training issues
 
