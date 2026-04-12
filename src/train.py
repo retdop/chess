@@ -23,6 +23,7 @@ DEFAULTS: dict = {
     "warmup_frac": 0.1,
     "val_frac": 0.05,
     "seed": 42,
+    "max_samples": None,
 }
 
 
@@ -46,6 +47,9 @@ def main():
 
     # ── Data ──────────────────────────────────────────────────────────────────
     df = load_puzzles(args.data_path)
+    if cfg["max_samples"] is not None:
+        df = df.head(cfg["max_samples"]).reset_index(drop=True)
+        print(f"Truncated to {len(df):,} samples (max_samples={cfg['max_samples']})")
 
     rating_mean = float(df["Rating"].mean())
     rating_std  = float(df["Rating"].std())
