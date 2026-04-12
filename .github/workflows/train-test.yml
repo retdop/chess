@@ -1,0 +1,67 @@
+name: Train (test – small params)
+
+# Runs automatically on pushes to the test branch to verify the model can learn.
+# Uses a tiny architecture and few epochs for a fast sanity-check.
+on:
+  push:
+    branches:
+      - claude/test-train-workflow-41WXp
+
+# Required secrets: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET
+jobs:
+  train-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: Modal
+      deployment: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Train on Modal (small params — learning sanity check)
+        run: |
+          uv run modal run train_modal.py \
+            --epochs          3   \
+            --batch-size      256 \
+            --d-model         64  \
+            --num-layers      2   \
+            --nhead           4   \
+            --dim-feedforward 256 \
+            --dropout         0.1 \
+            --lr              1e-3 \
+            --warmup-frac     0.1 \
+            --val-frac        0.05 \
+            --seed            42
+        env:
+          MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+      - name: Download checkpoints from Modal volume
+        run: |
+          mkdir -p checkpoints
+          uv run modal volume get chess-checkpoints /best.pt     checkpoints/best.pt
+          uv run modal volume get chess-checkpoints /stats.json  checkpoints/stats.json
+          uv run modal volume get chess-checkpoints /scatter.png checkpoints/scatter.png
+        env:
+          MODAL_TOKEN_ID:     ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+      - name: Upload checkpoints as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoints-test-${{ github.run_id }}
+          path: checkpoints/
+          retention-days: 7
