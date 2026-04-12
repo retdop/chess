@@ -1,0 +1,32 @@
+[project]
+name = "chess-puzzle-rating"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.1.0",
+    "python-chess>=1.999",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "ty>=0.0.1a1",
+    "pytest>=8.0",
+    "modal>=0.73",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
