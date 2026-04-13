@@ -45,6 +45,7 @@ def main():
     if config_path.exists():
         with open(config_path) as f:
             model_kwargs = json.load(f)
+    use_move_count = model_kwargs.pop("use_move_count", False)
 
     encoding = model_kwargs.get("encoding", "piece_index")
     df = load_puzzles(args.data_path)
@@ -66,9 +67,13 @@ def main():
 
     preds, targets = [], []
     with torch.no_grad():
-        for x, y in test_loader:
-            preds.extend(model(x.to(device)).cpu().numpy())
-            targets.extend(y.numpy())
+        for batch in test_loader:
+            board = batch["board"].to(device)
+            extra = None
+            if use_move_count:
+                extra = batch["num_moves"].to(device).unsqueeze(-1)
+            preds.extend(model(board, extra_features=extra).cpu().numpy())
+            targets.extend(batch["rating"].numpy())
 
     preds   = np.array(preds)   * rating_std + rating_mean
     targets = np.array(targets) * rating_std + rating_mean

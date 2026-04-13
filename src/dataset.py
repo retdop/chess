@@ -79,7 +79,7 @@ def fen_to_bitboard(fen: str, first_move: str | None = None) -> torch.Tensor:
     return torch.from_numpy(planes)
 
 
-class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
+class PuzzleDataset(Dataset[dict[str, torch.Tensor]]):
     def __init__(
         self,
         df: pd.DataFrame,
@@ -97,17 +97,31 @@ class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
             else np.array([None] * len(df))
         )
         self.ratings = ((df["Rating"].values - rating_mean) / rating_std).astype(np.float32)
+        # Number of solution moves (excluding the setup move)
+        if "Moves" in df.columns:
+            self.num_moves = (df["Moves"].str.split().str.len() - 1).values.astype(np.float32)
+        else:
+            self.num_moves = np.zeros(len(df), dtype=np.float32)
+        # Rating deviation for loss weighting and stochastic targets
+        if "RatingDeviation" in df.columns:
+            self.rating_deviations = df["RatingDeviation"].values.astype(np.float32)
+        else:
+            self.rating_deviations = np.full(len(df), 75.0, dtype=np.float32)
 
     def __len__(self) -> int:
         return len(self.fens)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:  # ty: ignore[invalid-method-override]
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:  # ty: ignore[invalid-method-override]
         if self.encoding == "bitboard":
             board = fen_to_bitboard(self.fens[idx], self.first_moves[idx])
         else:
             board = fen_to_tensor(self.fens[idx], self.first_moves[idx])
-        rating = torch.tensor(self.ratings[idx], dtype=torch.float32)
-        return board, rating
+        return {
+            "board": board,
+            "rating": torch.tensor(self.ratings[idx], dtype=torch.float32),
+            "num_moves": torch.tensor(self.num_moves[idx], dtype=torch.float32),
+            "rd": torch.tensor(self.rating_deviations[idx], dtype=torch.float32),
+        }
 
 
 def load_puzzles(csv_path: str, max_rating_deviation: float = 75.0) -> pd.DataFrame:

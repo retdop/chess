@@ -37,6 +37,7 @@ class ChessPuzzleTransformer(nn.Module):
         pool: str = "cls",
         pos_enc: str = "flat",
         encoding: str = "piece_index",
+        num_extra_features: int = 0,
     ):
         super().__init__()
         if pool not in ("cls", "mean"):
@@ -48,6 +49,7 @@ class ChessPuzzleTransformer(nn.Module):
         self.pool = pool
         self.pos_enc = pos_enc
         self.encoding = encoding
+        self.num_extra_features = num_extra_features
 
         # Input projection: embedding lookup for piece_index, linear for bitboard
         if encoding == "piece_index":
@@ -73,9 +75,10 @@ class ChessPuzzleTransformer(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
+        head_input_dim = d_model + num_extra_features
         self.head = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, 128),
+            nn.LayerNorm(head_input_dim),
+            nn.Linear(head_input_dim, 128),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(128, 1),
@@ -99,7 +102,7 @@ class ChessPuzzleTransformer(nn.Module):
                 nn.init.trunc_normal_(module.weight, std=0.02)
                 nn.init.zeros_(module.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, extra_features: torch.Tensor | None = None) -> torch.Tensor:
         B = x.shape[0]
 
         # Piece features → (B, 64, d_model)
@@ -131,5 +134,8 @@ class ChessPuzzleTransformer(nn.Module):
         else:
             out = self.transformer(tokens)                        # (B, 64, d_model)
             pooled = out.mean(dim=1)                              # mean over squares
+
+        if extra_features is not None and self.num_extra_features > 0:
+            pooled = torch.cat([pooled, extra_features], dim=-1)
 
         return self.head(pooled).squeeze(-1)  # (B,)

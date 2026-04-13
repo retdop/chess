@@ -79,6 +79,19 @@ def test_model_forward_bitboard():
     assert not torch.isnan(out).any()
 
 
+def test_model_forward_extra_features():
+    model = ChessPuzzleTransformer(
+        d_model=64, nhead=4, num_layers=2, dim_feedforward=128, num_extra_features=1
+    )
+    model.eval()
+    batch = torch.randint(0, 13, (8, 64))
+    extra = torch.randn(8, 1)
+    with torch.no_grad():
+        out = model(batch, extra_features=extra)
+    assert out.shape == (8,)
+    assert not torch.isnan(out).any(), "NaN in model output with extra features"
+
+
 def test_model_parameter_count():
     small = ChessPuzzleTransformer(d_model=64, nhead=4, num_layers=2, dim_feedforward=128)
     full = ChessPuzzleTransformer()
