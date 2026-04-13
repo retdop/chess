@@ -10,11 +10,14 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dataset import fen_to_bitboard, fen_to_tensor
+from dataset import _flip_board_h, fen_to_bitboard, fen_to_sequence, fen_to_tensor
 from model import ChessPuzzleTransformer
 
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 MIDGAME_FEN = "r1bqk2r/ppp2ppp/2np1n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 7"
+# A real Lichess puzzle: FEN + 3-move sequence (setup + 2 solution moves)
+PUZZLE_FEN = "r1bqkbnr/pppppppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
+PUZZLE_MOVES = "d2d4 c6d4 f3d4"  # setup move + 2 solution moves
 
 
 def test_fen_to_tensor_shape():
@@ -90,6 +93,61 @@ def test_model_forward_extra_features():
         out = model(batch, extra_features=extra)
     assert out.shape == (8,)
     assert not torch.isnan(out).any(), "NaN in model output with extra features"
+
+
+def test_fen_to_sequence_shape():
+    seq = fen_to_sequence(PUZZLE_FEN, PUZZLE_MOVES, encoding="piece_index")
+    assert seq.shape == (3, 64), f"Expected (3, 64), got {seq.shape}"
+    assert seq.dtype == torch.long
+
+
+def test_fen_to_sequence_bitboard():
+    seq = fen_to_sequence(PUZZLE_FEN, PUZZLE_MOVES, encoding="bitboard")
+    assert seq.shape == (3, 12, 8, 8), f"Expected (3, 12, 8, 8), got {seq.shape}"
+
+
+def test_flip_board_piece_index():
+    t = fen_to_tensor(STARTING_FEN)
+    flipped = _flip_board_h(t, "piece_index")
+    assert flipped.shape == t.shape
+    # Flipping twice should restore the original
+    assert torch.equal(_flip_board_h(flipped, "piece_index"), t)
+
+
+def test_flip_board_bitboard():
+    t = fen_to_bitboard(STARTING_FEN)
+    flipped = _flip_board_h(t, "bitboard")
+    assert flipped.shape == t.shape
+    assert torch.equal(_flip_board_h(flipped, "bitboard"), t)
+    # Piece count should be preserved
+    assert flipped.sum().item() == t.sum().item()
+
+
+def test_model_forward_solution_seq():
+    model = ChessPuzzleTransformer(
+        d_model=64, nhead=4, num_layers=2, dim_feedforward=128, use_solution_seq=True
+    )
+    model.eval()
+    # Simulate a batch of 4 puzzles, each with 3 board positions
+    x = torch.randint(0, 13, (4, 3, 64))
+    with torch.no_grad():
+        out = model(x)
+    assert out.shape == (4,), f"Expected (4,), got {out.shape}"
+    assert not torch.isnan(out).any()
+
+
+def test_model_forward_solution_seq_with_seq_lens():
+    model = ChessPuzzleTransformer(
+        d_model=64, nhead=4, num_layers=2, dim_feedforward=128, use_solution_seq=True
+    )
+    model.eval()
+    # Variable-length sequences padded to max_len=5
+    x = torch.randint(0, 13, (4, 5, 64))
+    seq_lens = torch.tensor([3, 5, 2, 4])
+    with torch.no_grad():
+        out = model(x, seq_lens=seq_lens)
+    assert out.shape == (4,)
+    assert not torch.isnan(out).any()
 
 
 def test_model_parameter_count():

@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
 
-from dataset import PuzzleDataset, load_puzzles
+from dataset import PuzzleDataset, load_puzzles, puzzle_collate_fn
 from model import ChessPuzzleTransformer
 
 
@@ -46,10 +46,14 @@ def main():
         with open(config_path) as f:
             model_kwargs = json.load(f)
     use_move_count = model_kwargs.pop("use_move_count", False)
+    use_solution_seq = model_kwargs.get("use_solution_seq", False)
 
     encoding = model_kwargs.get("encoding", "piece_index")
     df = load_puzzles(args.data_path)
-    dataset = PuzzleDataset(df, rating_mean, rating_std, encoding=encoding)
+    dataset = PuzzleDataset(
+        df, rating_mean, rating_std, encoding=encoding,
+        use_solution_seq=use_solution_seq,
+    )
 
     n_test  = int(len(dataset) * args.test_frac)
     n_val   = int(len(dataset) * args.val_frac)
@@ -59,7 +63,10 @@ def main():
         generator=torch.Generator().manual_seed(args.seed),
     )
 
-    test_loader = DataLoader(test_ds, batch_size=args.batch_size, num_workers=4)
+    collate_fn = puzzle_collate_fn if use_solution_seq else None
+    test_loader = DataLoader(
+        test_ds, batch_size=args.batch_size, num_workers=4, collate_fn=collate_fn,
+    )
 
     model = ChessPuzzleTransformer(**model_kwargs).to(device)
     model.load_state_dict(torch.load(ckpt_dir / "best.pt", map_location=device))
@@ -72,7 +79,8 @@ def main():
             extra = None
             if use_move_count:
                 extra = batch["num_moves"].to(device).unsqueeze(-1)
-            preds.extend(model(board, extra_features=extra).cpu().numpy())
+            seq_lens = batch.get("seq_lens")
+            preds.extend(model(board, extra_features=extra, seq_lens=seq_lens).cpu().numpy())
             targets.extend(batch["rating"].numpy())
 
     preds   = np.array(preds)   * rating_std + rating_mean

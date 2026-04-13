@@ -170,6 +170,8 @@ After training completes, GitHub Actions commits results back to the branch and 
 | `loss_fn` | `"mse"` | Loss function: `"mse"` (mean squared error) or `"huber"` (Smooth L1, more robust to outliers) |
 | `rd_weighted` | `false` | Weight per-sample loss by inverse rating deviation (down-weight uncertain labels) |
 | `stochastic_targets` | `false` | Sample training targets from N(rating, RD²) each step (label smoothing proportional to rating uncertainty) |
+| `use_solution_seq` | `false` | Encode all positions in the solution move sequence and aggregate with a GRU (temporal modeling) |
+| `augment_flip` | `false` | Randomly flip boards horizontally (a↔h files) with 50% probability during training |
 
 ### Diagnosing training issues
 

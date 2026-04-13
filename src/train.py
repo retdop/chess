@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
-from dataset import PuzzleDataset, load_puzzles
+from dataset import PuzzleDataset, load_puzzles, puzzle_collate_fn
 from model import ChessPuzzleTransformer
 
 DEFAULTS: dict = {
@@ -28,6 +28,8 @@ DEFAULTS: dict = {
     "loss_fn": "mse",
     "rd_weighted": False,
     "stochastic_targets": False,
+    "use_solution_seq": False,
+    "augment_flip": False,
 }
 
 
@@ -71,6 +73,8 @@ def main():
     loss_fn = cfg.get("loss_fn", "mse")
     rd_weighted = cfg.get("rd_weighted", False)
     stochastic_targets = cfg.get("stochastic_targets", False)
+    use_solution_seq = cfg.get("use_solution_seq", False)
+    augment_flip = cfg.get("augment_flip", False)
     with open(ckpt_dir / "config.json", "w") as f:
         json.dump({
             "d_model": cfg["d_model"],
@@ -83,9 +87,13 @@ def main():
             "encoding": encoding,
             "num_extra_features": num_extra_features,
             "use_move_count": use_move_count,
+            "use_solution_seq": use_solution_seq,
         }, f)
 
-    dataset = PuzzleDataset(df, rating_mean, rating_std, encoding=encoding)
+    dataset = PuzzleDataset(
+        df, rating_mean, rating_std, encoding=encoding,
+        use_solution_seq=use_solution_seq, augment_flip=augment_flip,
+    )
     n_val   = int(len(dataset) * cfg["val_frac"])
     n_train = len(dataset) - n_val
     train_ds, val_ds = random_split(
@@ -94,13 +102,14 @@ def main():
     )
     print(f"Split  train={n_train:,}  val={n_val:,}")
 
+    collate_fn = puzzle_collate_fn if use_solution_seq else None
     train_loader = DataLoader(
         train_ds, batch_size=cfg["batch_size"], shuffle=True,
-        num_workers=4, pin_memory=True,
+        num_workers=4, pin_memory=True, collate_fn=collate_fn,
     )
     val_loader = DataLoader(
         val_ds, batch_size=cfg["batch_size"] * 2,
-        num_workers=4, pin_memory=True,
+        num_workers=4, pin_memory=True, collate_fn=collate_fn,
     )
 
     # ── Model ─────────────────────────────────────────────────────────────────
@@ -114,6 +123,7 @@ def main():
         pos_enc=pos_enc,
         encoding=encoding,
         num_extra_features=num_extra_features,
+        use_solution_seq=use_solution_seq,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -155,7 +165,8 @@ def main():
                 extra = batch["num_moves"].to(device).unsqueeze(-1)
 
             optimizer.zero_grad()
-            pred = model(board, extra_features=extra)
+            seq_lens = batch.get("seq_lens")
+            pred = model(board, extra_features=extra, seq_lens=seq_lens)
 
             # Per-sample loss
             if loss_fn == "huber":
@@ -197,9 +208,9 @@ def main():
                 extra = None
                 if use_move_count:
                     extra = batch["num_moves"].to(device).unsqueeze(-1)
-                val_losses.append(
-                    nn.functional.mse_loss(model(board, extra_features=extra), y).item()
-                )
+                seq_lens = batch.get("seq_lens")
+                pred = model(board, extra_features=extra, seq_lens=seq_lens)
+                val_losses.append(nn.functional.mse_loss(pred, y).item())
 
         val_rmse_norm = float(np.mean(val_losses)) ** 0.5
         val_rmse_elo  = val_rmse_norm * rating_std
