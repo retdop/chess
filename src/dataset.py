@@ -15,6 +15,16 @@ _PIECE_IDX_OPPONENT = {
     chess.ROOK: 10, chess.QUEEN: 11, chess.KING: 12,
 }
 
+# Bitboard plane indices: 0-5 = friendly PNBRQK, 6-11 = opponent PNBRQK
+_PLANE_FRIENDLY = {
+    chess.PAWN: 0, chess.KNIGHT: 1, chess.BISHOP: 2,
+    chess.ROOK: 3, chess.QUEEN: 4, chess.KING: 5,
+}
+_PLANE_OPPONENT = {
+    chess.PAWN: 6, chess.KNIGHT: 7, chess.BISHOP: 8,
+    chess.ROOK: 9, chess.QUEEN: 10, chess.KING: 11,
+}
+
 
 def fen_to_tensor(fen: str, first_move: str | None = None) -> torch.Tensor:
     """Convert FEN string to (64,) tensor of piece indices (0=empty, 1-12=pieces).
@@ -43,8 +53,43 @@ def fen_to_tensor(fen: str, first_move: str | None = None) -> torch.Tensor:
     return torch.tensor(squares, dtype=torch.long)
 
 
+def fen_to_bitboard(fen: str, first_move: str | None = None) -> torch.Tensor:
+    """Convert FEN string to (12, 8, 8) binary tensor of piece planes.
+
+    12 planes: 6 friendly piece types (PNBRQK) + 6 opponent piece types.
+    Pieces are relative to side-to-move (colour-invariant), same as
+    ``fen_to_tensor``.  Board layout: planes[channel][rank][file] where
+    rank 0 = rank 1 (a1-h1) and file 0 = file a.
+    """
+    board = chess.Board(fen)
+    if first_move is not None:
+        board.push_uci(first_move)
+    stm = board.turn
+    planes = np.zeros((12, 8, 8), dtype=np.float32)
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece is None:
+            continue
+        rank = chess.square_rank(sq)
+        file = chess.square_file(sq)
+        if piece.color == stm:
+            planes[_PLANE_FRIENDLY[piece.piece_type], rank, file] = 1.0
+        else:
+            planes[_PLANE_OPPONENT[piece.piece_type], rank, file] = 1.0
+    return torch.from_numpy(planes)
+
+
 class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
-    def __init__(self, df: pd.DataFrame, rating_mean: float, rating_std: float):
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        rating_mean: float,
+        rating_std: float,
+        encoding: str = "piece_index",
+    ):
+        if encoding not in ("piece_index", "bitboard"):
+            raise ValueError(f"encoding must be 'piece_index' or 'bitboard', got {encoding!r}")
+        self.encoding = encoding
         self.fens = df["FEN"].values
         self.first_moves = (
             df["Moves"].str.split().str[0].values
@@ -57,7 +102,10 @@ class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         return len(self.fens)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:  # ty: ignore[invalid-method-override]
-        board = fen_to_tensor(self.fens[idx], self.first_moves[idx])
+        if self.encoding == "bitboard":
+            board = fen_to_bitboard(self.fens[idx], self.first_moves[idx])
+        else:
+            board = fen_to_tensor(self.fens[idx], self.first_moves[idx])
         rating = torch.tensor(self.ratings[idx], dtype=torch.float32)
         return board, rating
 

@@ -5,7 +5,13 @@ import torch.nn as nn
 class ChessPuzzleTransformer(nn.Module):
     """
     Treats a chess position as a sequence of 64 square tokens.
-    Each token = piece_embedding(piece_idx) + positional_embedding.
+
+    Input encoding is configurable via *encoding*:
+      - ``"piece_index"`` (default): input is (B, 64) integer tensor with
+        piece indices 0-12.  Each index is looked up in an embedding table.
+      - ``"bitboard"``: input is (B, 12, 8, 8) float tensor with 12 binary
+        piece-type planes.  Reshaped to (B, 64, 12) and linearly projected
+        into d_model.
 
     Positional encoding is configurable via *pos_enc*:
       - ``"flat"`` (default): one learned embedding per square (64 total).
@@ -22,6 +28,7 @@ class ChessPuzzleTransformer(nn.Module):
     def __init__(
         self,
         num_piece_types: int = 13,   # 0=empty, 1-12=pieces
+        num_planes: int = 12,        # bitboard planes (6 friendly + 6 opponent)
         d_model: int = 256,
         nhead: int = 8,
         num_layers: int = 6,
@@ -29,16 +36,25 @@ class ChessPuzzleTransformer(nn.Module):
         dropout: float = 0.1,
         pool: str = "cls",
         pos_enc: str = "flat",
+        encoding: str = "piece_index",
     ):
         super().__init__()
         if pool not in ("cls", "mean"):
             raise ValueError(f"pool must be 'cls' or 'mean', got {pool!r}")
         if pos_enc not in ("flat", "2d"):
             raise ValueError(f"pos_enc must be 'flat' or '2d', got {pos_enc!r}")
+        if encoding not in ("piece_index", "bitboard"):
+            raise ValueError(f"encoding must be 'piece_index' or 'bitboard', got {encoding!r}")
         self.pool = pool
         self.pos_enc = pos_enc
+        self.encoding = encoding
 
-        self.piece_embedding = nn.Embedding(num_piece_types, d_model)
+        # Input projection: embedding lookup for piece_index, linear for bitboard
+        if encoding == "piece_index":
+            self.piece_embedding = nn.Embedding(num_piece_types, d_model)
+        else:
+            self.piece_projection = nn.Linear(num_planes, d_model)
+
         if pos_enc == "flat":
             self.pos_embedding = nn.Embedding(64, d_model)
         else:
@@ -68,7 +84,11 @@ class ChessPuzzleTransformer(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
-        nn.init.trunc_normal_(self.piece_embedding.weight, std=0.1)
+        if self.encoding == "piece_index":
+            nn.init.trunc_normal_(self.piece_embedding.weight, std=0.1)
+        else:
+            nn.init.trunc_normal_(self.piece_projection.weight, std=0.1)
+            nn.init.zeros_(self.piece_projection.bias)
         if self.pos_enc == "flat":
             nn.init.trunc_normal_(self.pos_embedding.weight, std=0.1)
         else:
@@ -80,20 +100,28 @@ class ChessPuzzleTransformer(nn.Module):
                 nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, 64)  piece indices per square
         B = x.shape[0]
 
+        # Piece features → (B, 64, d_model)
+        if self.encoding == "bitboard":
+            # x: (B, 12, 8, 8) → (B, 64, 12)
+            piece_feats = x.reshape(B, x.shape[1], 64).permute(0, 2, 1)
+            piece_emb = self.piece_projection(piece_feats)
+        else:
+            # x: (B, 64)  piece indices
+            piece_emb = self.piece_embedding(x)
+
+        # Positional encoding → (B, 64, d_model)
         if self.pos_enc == "flat":
             positions = torch.arange(64, device=x.device).unsqueeze(0).expand(B, -1)
-            pos_emb = self.pos_embedding(positions)                   # (B, 64, d_model)
+            pos_emb = self.pos_embedding(positions)
         else:
-            # chess.SQUARES: a1=0, b1=1, ..., h1=7, a2=8, ..., h8=63
             sq = torch.arange(64, device=x.device)
-            files = (sq % 8).unsqueeze(0).expand(B, -1)              # column 0-7
-            ranks = (sq // 8).unsqueeze(0).expand(B, -1)             # row 0-7
+            files = (sq % 8).unsqueeze(0).expand(B, -1)
+            ranks = (sq // 8).unsqueeze(0).expand(B, -1)
             pos_emb = self.file_embedding(files) + self.rank_embedding(ranks)
 
-        tokens = self.piece_embedding(x) + pos_emb                   # (B, 64, d_model)
+        tokens = piece_emb + pos_emb                                 # (B, 64, d_model)
 
         if self.pool == "cls":
             cls = self.cls_token.expand(B, -1, -1)               # (B,  1, d_model)

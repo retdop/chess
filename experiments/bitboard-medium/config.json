@@ -1,0 +1,16 @@
+{
+  "epochs": 60,
+  "batch_size": 512,
+  "d_model": 128,
+  "nhead": 4,
+  "num_layers": 4,
+  "dim_feedforward": 512,
+  "dropout": 0.1,
+  "lr": 1e-3,
+  "warmup_frac": 0.05,
+  "val_frac": 0.05,
+  "seed": 42,
+  "encoding": "bitboard",
+  "pos_enc": "2d",
+  "pool": "mean"
+}

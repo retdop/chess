@@ -40,8 +40,15 @@ def main():
     rating_mean = stats["rating_mean"]
     rating_std  = stats["rating_std"]
 
+    config_path = ckpt_dir / "config.json"
+    model_kwargs: dict[str, Any] = {}
+    if config_path.exists():
+        with open(config_path) as f:
+            model_kwargs = json.load(f)
+
+    encoding = model_kwargs.get("encoding", "piece_index")
     df = load_puzzles(args.data_path)
-    dataset = PuzzleDataset(df, rating_mean, rating_std)
+    dataset = PuzzleDataset(df, rating_mean, rating_std, encoding=encoding)
 
     n_test  = int(len(dataset) * args.test_frac)
     n_val   = int(len(dataset) * args.val_frac)
@@ -53,11 +60,6 @@ def main():
 
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, num_workers=4)
 
-    config_path = ckpt_dir / "config.json"
-    model_kwargs: dict[str, Any] = {}
-    if config_path.exists():
-        with open(config_path) as f:
-            model_kwargs = json.load(f)
     model = ChessPuzzleTransformer(**model_kwargs).to(device)
     model.load_state_dict(torch.load(ckpt_dir / "best.pt", map_location=device))
     model.eval()
