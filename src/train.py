@@ -61,6 +61,7 @@ def main():
         json.dump({"rating_mean": rating_mean, "rating_std": rating_std}, f)
     pool = cfg.get("pool", "cls")
     pos_enc = cfg.get("pos_enc", "flat")
+    encoding = cfg.get("encoding", "piece_index")
     with open(ckpt_dir / "config.json", "w") as f:
         json.dump({
             "d_model": cfg["d_model"],
@@ -70,9 +71,10 @@ def main():
             "dropout": cfg["dropout"],
             "pool": pool,
             "pos_enc": pos_enc,
+            "encoding": encoding,
         }, f)
 
-    dataset = PuzzleDataset(df, rating_mean, rating_std)
+    dataset = PuzzleDataset(df, rating_mean, rating_std, encoding=encoding)
     n_val   = int(len(dataset) * cfg["val_frac"])
     n_train = len(dataset) - n_val
     train_ds, val_ds = random_split(
@@ -99,6 +101,7 @@ def main():
         dropout=cfg["dropout"],
         pool=pool,
         pos_enc=pos_enc,
+        encoding=encoding,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())

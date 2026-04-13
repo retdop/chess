@@ -10,7 +10,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dataset import fen_to_tensor
+from dataset import fen_to_bitboard, fen_to_tensor
 from model import ChessPuzzleTransformer
 
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -53,6 +53,30 @@ def test_model_forward_batch():
         out = model(batch)
     assert out.shape == (16,)
     assert not torch.isnan(out).any(), "NaN in model output"
+
+
+def test_fen_to_bitboard_shape():
+    t = fen_to_bitboard(STARTING_FEN)
+    assert t.shape == (12, 8, 8), f"Expected (12, 8, 8), got {t.shape}"
+    assert t.dtype == torch.float32
+
+
+def test_fen_to_bitboard_piece_count():
+    t = fen_to_bitboard(STARTING_FEN)
+    # 32 pieces on the board, each in exactly one plane
+    assert t.sum().item() == 32
+
+
+def test_model_forward_bitboard():
+    model = ChessPuzzleTransformer(
+        d_model=64, nhead=4, num_layers=2, dim_feedforward=128, encoding="bitboard"
+    )
+    model.eval()
+    x = fen_to_bitboard(STARTING_FEN).unsqueeze(0)  # (1, 12, 8, 8)
+    with torch.no_grad():
+        out = model(x)
+    assert out.shape == (1,), f"Expected (1,), got {out.shape}"
+    assert not torch.isnan(out).any()
 
 
 def test_model_parameter_count():

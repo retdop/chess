@@ -165,6 +165,7 @@ After training completes, GitHub Actions commits results back to the branch and 
 | `max_samples` | null | Limit dataset size (null = use all data, set to small number for overfit tests) |
 | `pool` | `"cls"` | Pooling strategy: `"cls"` (learnable CLS token) or `"mean"` (average all 64 squares) |
 | `pos_enc` | `"flat"` | Positional encoding: `"flat"` (one embedding per square) or `"2d"` (separate rank + file embeddings) |
+| `encoding` | `"piece_index"` | Input encoding: `"piece_index"` (single int 0-12 per square) or `"bitboard"` (12 binary 8x8 planes) |
 
 ### Diagnosing training issues
 
