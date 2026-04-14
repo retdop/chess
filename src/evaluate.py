@@ -47,9 +47,10 @@ def main():
             model_kwargs = json.load(f)
     use_move_count = model_kwargs.pop("use_move_count", False)
     use_solution_seq = model_kwargs.get("use_solution_seq", False)
+    max_rd = model_kwargs.pop("max_rating_deviation", 75.0)
 
     encoding = model_kwargs.get("encoding", "piece_index")
-    df = load_puzzles(args.data_path)
+    df = load_puzzles(args.data_path, max_rating_deviation=max_rd)
     dataset = PuzzleDataset(
         df, rating_mean, rating_std, encoding=encoding,
         use_solution_seq=use_solution_seq,

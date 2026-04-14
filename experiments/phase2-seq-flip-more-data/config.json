@@ -1,0 +1,22 @@
+{
+  "epochs": 30,
+  "batch_size": 256,
+  "d_model": 64,
+  "nhead": 4,
+  "num_layers": 2,
+  "dim_feedforward": 256,
+  "dropout": 0.05,
+  "lr": 3e-3,
+  "warmup_frac": 0.05,
+  "val_frac": 0.02,
+  "seed": 42,
+  "encoding": "bitboard",
+  "pos_enc": "2d",
+  "use_move_count": true,
+  "loss_fn": "mse",
+  "rd_weighted": true,
+  "stochastic_targets": true,
+  "use_solution_seq": true,
+  "augment_flip": true,
+  "max_rating_deviation": 500
+}

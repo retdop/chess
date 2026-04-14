@@ -52,7 +52,8 @@ def main():
     print(f"Device: {device}")
 
     # ── Data ──────────────────────────────────────────────────────────────────
-    df = load_puzzles(args.data_path)
+    max_rd = cfg.get("max_rating_deviation", 75.0)
+    df = load_puzzles(args.data_path, max_rating_deviation=max_rd)
     if cfg["max_samples"] is not None:
         df = df.head(cfg["max_samples"]).reset_index(drop=True)
         print(f"Truncated to {len(df):,} samples (max_samples={cfg['max_samples']})")
@@ -88,6 +89,7 @@ def main():
             "num_extra_features": num_extra_features,
             "use_move_count": use_move_count,
             "use_solution_seq": use_solution_seq,
+            "max_rating_deviation": max_rd,
         }, f)
 
     dataset = PuzzleDataset(
