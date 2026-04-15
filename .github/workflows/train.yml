@@ -67,6 +67,9 @@ jobs:
           uv run modal volume get chess-checkpoints /history.json    "$dir/history.json"
           uv run modal volume get chess-checkpoints /predictions.csv "$dir/predictions.csv"
 
+          # Standardized RD<75 results (only exists when training used a higher RD threshold)
+          uv run modal volume get chess-checkpoints /results_std75.json "$dir/results_std75.json" || true
+
           mkdir -p /tmp/plots
           uv run modal volume get chess-checkpoints /scatter.png /tmp/plots/scatter.png
         env:
@@ -93,6 +96,8 @@ jobs:
             "$dir/history.json" \
             "$dir/predictions.csv" \
             "$dir/PENDING"
+          # Add standardized results if they exist
+          [ -f "$dir/results_std75.json" ] && git add "$dir/results_std75.json"
           git commit -m "results(${{ inputs.experiment }}): add training results"
 
           # Retry push with rebase in case of concurrent experiment commits
