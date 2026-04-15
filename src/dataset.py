@@ -79,35 +79,117 @@ def fen_to_bitboard(fen: str, first_move: str | None = None) -> torch.Tensor:
     return torch.from_numpy(planes)
 
 
-class PuzzleDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
+def fen_to_sequence(fen: str, moves: str, encoding: str = "piece_index") -> torch.Tensor:
+    """Encode all positions in a puzzle's move sequence.
+
+    Applies each move from the Lichess Moves column sequentially and encodes
+    the resulting board.  Returns (S, 64) for piece_index or (S, 12, 8, 8)
+    for bitboard, where S = number of moves.
+    """
+    move_list = moves.split()
+    board = chess.Board(fen)
+    encode_fn = fen_to_bitboard if encoding == "bitboard" else fen_to_tensor
+    positions: list[torch.Tensor] = []
+    for move in move_list:
+        board.push_uci(move)
+        positions.append(encode_fn(board.fen()))
+    return torch.stack(positions)
+
+
+# Horizontal flip permutation: for each square, swap file (a↔h, b↔g, …).
+_HFLIP_INDICES = torch.tensor([r * 8 + (7 - f) for r in range(8) for f in range(8)])
+
+
+def _flip_board_h(board: torch.Tensor, encoding: str) -> torch.Tensor:
+    """Horizontally flip a board tensor (mirror along files a↔h)."""
+    if encoding == "bitboard":
+        return board.flip(-1)          # flip file axis (last dim of 8×8)
+    else:
+        if board.dim() == 1:           # (64,)
+            return board[_HFLIP_INDICES]
+        return board[:, _HFLIP_INDICES]  # (S, 64) — flip each position
+
+
+def puzzle_collate_fn(batch: list[dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+    """Collate function that pads variable-length board position sequences."""
+    boards = [b["board"] for b in batch]
+    result: dict[str, torch.Tensor] = {}
+
+    shapes = {b.shape for b in boards}
+    if len(shapes) > 1:
+        # Variable-length sequences — pad to max length in this batch
+        seq_lens = torch.tensor([b.shape[0] for b in boards])
+        max_len = int(seq_lens.max().item())
+        padded_shape = (len(boards), max_len) + boards[0].shape[1:]
+        padded = torch.zeros(padded_shape, dtype=boards[0].dtype)
+        for i, b in enumerate(boards):
+            padded[i, : b.shape[0]] = b
+        result["board"] = padded
+        result["seq_lens"] = seq_lens
+    else:
+        result["board"] = torch.stack(boards)
+
+    result["rating"] = torch.stack([b["rating"] for b in batch])
+    result["num_moves"] = torch.stack([b["num_moves"] for b in batch])
+    result["rd"] = torch.stack([b["rd"] for b in batch])
+    return result
+
+
+class PuzzleDataset(Dataset[dict[str, torch.Tensor]]):
     def __init__(
         self,
         df: pd.DataFrame,
         rating_mean: float,
         rating_std: float,
         encoding: str = "piece_index",
+        use_solution_seq: bool = False,
+        augment_flip: bool = False,
     ):
         if encoding not in ("piece_index", "bitboard"):
             raise ValueError(f"encoding must be 'piece_index' or 'bitboard', got {encoding!r}")
         self.encoding = encoding
+        self.use_solution_seq = use_solution_seq
+        self.augment_flip = augment_flip
         self.fens = df["FEN"].values
         self.first_moves = (
             df["Moves"].str.split().str[0].values
             if "Moves" in df.columns
             else np.array([None] * len(df))
         )
+        # Full move strings for solution sequence encoding
+        self.moves = df["Moves"].values if "Moves" in df.columns else np.array([""] * len(df))
         self.ratings = ((df["Rating"].values - rating_mean) / rating_std).astype(np.float32)
+        # Number of solution moves (excluding the setup move)
+        if "Moves" in df.columns:
+            self.num_moves = (df["Moves"].str.split().str.len() - 1).values.astype(np.float32)
+        else:
+            self.num_moves = np.zeros(len(df), dtype=np.float32)
+        # Rating deviation for loss weighting and stochastic targets
+        if "RatingDeviation" in df.columns:
+            self.rating_deviations = df["RatingDeviation"].values.astype(np.float32)
+        else:
+            self.rating_deviations = np.full(len(df), 75.0, dtype=np.float32)
 
     def __len__(self) -> int:
         return len(self.fens)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:  # ty: ignore[invalid-method-override]
-        if self.encoding == "bitboard":
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:  # ty: ignore[invalid-method-override]
+        if self.use_solution_seq:
+            board = fen_to_sequence(self.fens[idx], self.moves[idx], self.encoding)
+        elif self.encoding == "bitboard":
             board = fen_to_bitboard(self.fens[idx], self.first_moves[idx])
         else:
             board = fen_to_tensor(self.fens[idx], self.first_moves[idx])
-        rating = torch.tensor(self.ratings[idx], dtype=torch.float32)
-        return board, rating
+
+        if self.augment_flip and torch.rand(1).item() < 0.5:
+            board = _flip_board_h(board, self.encoding)
+
+        return {
+            "board": board,
+            "rating": torch.tensor(self.ratings[idx], dtype=torch.float32),
+            "num_moves": torch.tensor(self.num_moves[idx], dtype=torch.float32),
+            "rd": torch.tensor(self.rating_deviations[idx], dtype=torch.float32),
+        }
 
 
 def load_puzzles(csv_path: str, max_rating_deviation: float = 75.0) -> pd.DataFrame:

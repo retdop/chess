@@ -37,6 +37,8 @@ class ChessPuzzleTransformer(nn.Module):
         pool: str = "cls",
         pos_enc: str = "flat",
         encoding: str = "piece_index",
+        num_extra_features: int = 0,
+        use_solution_seq: bool = False,
     ):
         super().__init__()
         if pool not in ("cls", "mean"):
@@ -48,6 +50,8 @@ class ChessPuzzleTransformer(nn.Module):
         self.pool = pool
         self.pos_enc = pos_enc
         self.encoding = encoding
+        self.num_extra_features = num_extra_features
+        self.use_solution_seq = use_solution_seq
 
         # Input projection: embedding lookup for piece_index, linear for bitboard
         if encoding == "piece_index":
@@ -73,9 +77,13 @@ class ChessPuzzleTransformer(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
+        if use_solution_seq:
+            self.seq_gru = nn.GRU(d_model, d_model, batch_first=True)
+
+        head_input_dim = d_model + num_extra_features
         self.head = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, 128),
+            nn.LayerNorm(head_input_dim),
+            nn.Linear(head_input_dim, 128),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(128, 1),
@@ -99,16 +107,15 @@ class ChessPuzzleTransformer(nn.Module):
                 nn.init.trunc_normal_(module.weight, std=0.02)
                 nn.init.zeros_(module.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def _encode_board(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode board position(s) → (B, d_model) pooled representations."""
         B = x.shape[0]
 
         # Piece features → (B, 64, d_model)
         if self.encoding == "bitboard":
-            # x: (B, 12, 8, 8) → (B, 64, 12)
             piece_feats = x.reshape(B, x.shape[1], 64).permute(0, 2, 1)
             piece_emb = self.piece_projection(piece_feats)
         else:
-            # x: (B, 64)  piece indices
             piece_emb = self.piece_embedding(x)
 
         # Positional encoding → (B, 64, d_model)
@@ -131,5 +138,33 @@ class ChessPuzzleTransformer(nn.Module):
         else:
             out = self.transformer(tokens)                        # (B, 64, d_model)
             pooled = out.mean(dim=1)                              # mean over squares
+
+        return pooled
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        extra_features: torch.Tensor | None = None,
+        seq_lens: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if self.use_solution_seq:
+            # x: (B, S, 64) or (B, S, 12, 8, 8) — sequence of board positions
+            B, S = x.shape[0], x.shape[1]
+            flat_x = x.reshape(B * S, *x.shape[2:])
+            flat_pooled = self._encode_board(flat_x)             # (B*S, d_model)
+            seq_embs = flat_pooled.reshape(B, S, -1)             # (B, S, d_model)
+            if seq_lens is not None:
+                packed = nn.utils.rnn.pack_padded_sequence(
+                    seq_embs, seq_lens.cpu(), batch_first=True, enforce_sorted=False,
+                )
+                _, hidden = self.seq_gru(packed)
+            else:
+                _, hidden = self.seq_gru(seq_embs)
+            pooled = hidden.squeeze(0)                           # (B, d_model)
+        else:
+            pooled = self._encode_board(x)
+
+        if extra_features is not None and self.num_extra_features > 0:
+            pooled = torch.cat([pooled, extra_features], dim=-1)
 
         return self.head(pooled).squeeze(-1)  # (B,)

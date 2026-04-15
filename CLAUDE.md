@@ -163,9 +163,16 @@ After training completes, GitHub Actions commits results back to the branch and 
 | `val_frac` | 0.05 | Fraction of data for validation |
 | `seed` | 42 | Random seed for reproducibility |
 | `max_samples` | null | Limit dataset size (null = use all data, set to small number for overfit tests) |
+| `max_rating_deviation` | 75.0 | Filter puzzles by rating deviation (higher = more data but noisier labels; use with `rd_weighted`) |
 | `pool` | `"cls"` | Pooling strategy: `"cls"` (learnable CLS token) or `"mean"` (average all 64 squares) |
 | `pos_enc` | `"flat"` | Positional encoding: `"flat"` (one embedding per square) or `"2d"` (separate rank + file embeddings) |
 | `encoding` | `"piece_index"` | Input encoding: `"piece_index"` (single int 0-12 per square) or `"bitboard"` (12 binary 8x8 planes) |
+| `use_move_count` | `false` | Feed solution length (number of moves) as an extra scalar feature to the rating head |
+| `loss_fn` | `"mse"` | Loss function: `"mse"` (mean squared error) or `"huber"` (Smooth L1, more robust to outliers) |
+| `rd_weighted` | `false` | Weight per-sample loss by inverse rating deviation (down-weight uncertain labels) |
+| `stochastic_targets` | `false` | Sample training targets from N(rating, RD²) each step (label smoothing proportional to rating uncertainty) |
+| `use_solution_seq` | `false` | Encode all positions in the solution move sequence and aggregate with a GRU (temporal modeling) |
+| `augment_flip` | `false` | Randomly flip boards horizontally (a↔h files) with 50% probability during training |
 
 ### Diagnosing training issues
 

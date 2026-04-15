@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
-from dataset import PuzzleDataset, load_puzzles
+from dataset import PuzzleDataset, load_puzzles, puzzle_collate_fn
 from model import ChessPuzzleTransformer
 
 DEFAULTS: dict = {
@@ -24,6 +24,12 @@ DEFAULTS: dict = {
     "val_frac": 0.05,
     "seed": 42,
     "max_samples": None,
+    "use_move_count": False,
+    "loss_fn": "mse",
+    "rd_weighted": False,
+    "stochastic_targets": False,
+    "use_solution_seq": False,
+    "augment_flip": False,
 }
 
 
@@ -46,7 +52,8 @@ def main():
     print(f"Device: {device}")
 
     # ── Data ──────────────────────────────────────────────────────────────────
-    df = load_puzzles(args.data_path)
+    max_rd = cfg.get("max_rating_deviation", 75.0)
+    df = load_puzzles(args.data_path, max_rating_deviation=max_rd)
     if cfg["max_samples"] is not None:
         df = df.head(cfg["max_samples"]).reset_index(drop=True)
         print(f"Truncated to {len(df):,} samples (max_samples={cfg['max_samples']})")
@@ -62,6 +69,13 @@ def main():
     pool = cfg.get("pool", "cls")
     pos_enc = cfg.get("pos_enc", "flat")
     encoding = cfg.get("encoding", "piece_index")
+    use_move_count = cfg.get("use_move_count", False)
+    num_extra_features = 1 if use_move_count else 0
+    loss_fn = cfg.get("loss_fn", "mse")
+    rd_weighted = cfg.get("rd_weighted", False)
+    stochastic_targets = cfg.get("stochastic_targets", False)
+    use_solution_seq = cfg.get("use_solution_seq", False)
+    augment_flip = cfg.get("augment_flip", False)
     with open(ckpt_dir / "config.json", "w") as f:
         json.dump({
             "d_model": cfg["d_model"],
@@ -72,9 +86,16 @@ def main():
             "pool": pool,
             "pos_enc": pos_enc,
             "encoding": encoding,
+            "num_extra_features": num_extra_features,
+            "use_move_count": use_move_count,
+            "use_solution_seq": use_solution_seq,
+            "max_rating_deviation": max_rd,
         }, f)
 
-    dataset = PuzzleDataset(df, rating_mean, rating_std, encoding=encoding)
+    dataset = PuzzleDataset(
+        df, rating_mean, rating_std, encoding=encoding,
+        use_solution_seq=use_solution_seq, augment_flip=augment_flip,
+    )
     n_val   = int(len(dataset) * cfg["val_frac"])
     n_train = len(dataset) - n_val
     train_ds, val_ds = random_split(
@@ -83,13 +104,14 @@ def main():
     )
     print(f"Split  train={n_train:,}  val={n_val:,}")
 
+    collate_fn = puzzle_collate_fn if use_solution_seq else None
     train_loader = DataLoader(
         train_ds, batch_size=cfg["batch_size"], shuffle=True,
-        num_workers=4, pin_memory=True,
+        num_workers=4, pin_memory=True, collate_fn=collate_fn,
     )
     val_loader = DataLoader(
         val_ds, batch_size=cfg["batch_size"] * 2,
-        num_workers=4, pin_memory=True,
+        num_workers=4, pin_memory=True, collate_fn=collate_fn,
     )
 
     # ── Model ─────────────────────────────────────────────────────────────────
@@ -102,6 +124,8 @@ def main():
         pool=pool,
         pos_enc=pos_enc,
         encoding=encoding,
+        num_extra_features=num_extra_features,
+        use_solution_seq=use_solution_seq,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
@@ -119,7 +143,6 @@ def main():
         return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-    criterion = nn.MSELoss()
 
     # ── Training loop ─────────────────────────────────────────────────────────
     best_val_rmse = float("inf")
@@ -129,10 +152,38 @@ def main():
         model.train()
         running_loss = []
 
-        for step, (x, y) in enumerate(train_loader):
-            x, y = x.to(device), y.to(device)
+        for step, batch in enumerate(train_loader):
+            board = batch["board"].to(device)
+            y = batch["rating"].to(device)
+
+            # Stochastic target sampling: add noise proportional to rating deviation
+            if stochastic_targets:
+                rd_norm = batch["rd"].to(device) / rating_std
+                y = y + torch.randn_like(y) * rd_norm
+
+            # Extra features
+            extra = None
+            if use_move_count:
+                extra = batch["num_moves"].to(device).unsqueeze(-1)
+
             optimizer.zero_grad()
-            loss = criterion(model(x), y)
+            seq_lens = batch.get("seq_lens")
+            pred = model(board, extra_features=extra, seq_lens=seq_lens)
+
+            # Per-sample loss
+            if loss_fn == "huber":
+                sample_loss = nn.functional.smooth_l1_loss(pred, y, reduction="none")
+            else:
+                sample_loss = (pred - y) ** 2
+
+            # RD-weighted loss: down-weight uncertain labels
+            if rd_weighted:
+                weights = 1.0 / batch["rd"].to(device)
+                weights = weights / weights.mean()
+                loss = (weights * sample_loss).mean()
+            else:
+                loss = sample_loss.mean()
+
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -149,13 +200,19 @@ def main():
                     "train_loss": round(avg_loss, 6),
                 })
 
-        # Validation
+        # Validation (always plain MSE for comparable metrics)
         model.eval()
         val_losses = []
         with torch.no_grad():
-            for x, y in val_loader:
-                x, y = x.to(device), y.to(device)
-                val_losses.append(criterion(model(x), y).item())
+            for batch in val_loader:
+                board = batch["board"].to(device)
+                y = batch["rating"].to(device)
+                extra = None
+                if use_move_count:
+                    extra = batch["num_moves"].to(device).unsqueeze(-1)
+                seq_lens = batch.get("seq_lens")
+                pred = model(board, extra_features=extra, seq_lens=seq_lens)
+                val_losses.append(nn.functional.mse_loss(pred, y).item())
 
         val_rmse_norm = float(np.mean(val_losses)) ** 0.5
         val_rmse_elo  = val_rmse_norm * rating_std
